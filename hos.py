@@ -16,6 +16,57 @@ SLP = 0.01
 SEQ_TYPES = (list, tuple)
 board_grid = []
 
+keymap = dict(
+    [
+    [ blt.TK_SHIFT, 'SHIFT' ],
+    [ blt.TK_RETURN, '\n' ],
+    [ blt.TK_PERIOD, "." ],
+
+    [ blt.TK_Q, 'q' ],
+    [ blt.TK_W, 'w' ],
+    [ blt.TK_E, 'e' ],
+    [ blt.TK_R, 'r' ],
+    [ blt.TK_T, 't' ],
+    [ blt.TK_Y, 'y' ],
+    [ blt.TK_U, 'u' ],
+    [ blt.TK_I, 'i' ],
+    [ blt.TK_O, 'o' ],
+    [ blt.TK_P, 'p' ],
+    [ blt.TK_A, 'a' ],
+    [ blt.TK_S, 's' ],
+    [ blt.TK_D, 'd' ],
+    [ blt.TK_F, 'f' ],
+    [ blt.TK_G, 'g' ],
+    [ blt.TK_H, 'h' ],
+    [ blt.TK_J, 'j' ],
+    [ blt.TK_K, 'k' ],
+    [ blt.TK_L, 'l' ],
+    [ blt.TK_Z, 'z' ],
+    [ blt.TK_X, 'x' ],
+    [ blt.TK_C, 'c' ],
+    [ blt.TK_V, 'v' ],
+    [ blt.TK_B, 'b' ],
+    [ blt.TK_N, 'n' ],
+    [ blt.TK_M, 'm' ],
+
+    [ blt.TK_1, '1' ],
+    [ blt.TK_2, '2' ],
+    [ blt.TK_3, '3' ],
+    [ blt.TK_4, '4' ],
+    [ blt.TK_5, '5' ],
+    [ blt.TK_6, '6' ],
+    [ blt.TK_7, '7' ],
+    [ blt.TK_8, '8' ],
+    [ blt.TK_9, '9' ],
+    [ blt.TK_0, '0' ],
+
+    [ blt.TK_COMMA, ',' ],
+    [ blt.TK_SPACE, ' ' ],
+    [ blt.TK_MINUS, '-' ],
+    [ blt.TK_SLASH, '/' ],
+    ]
+    )
+
 noto_tiles = """fountain
 sailboat
 snowman
@@ -107,7 +158,7 @@ class Blocks:
     """All game tiles."""
     blank = ' '
     rock = '█'
-    platform = '⎽'͟
+    platform = '⎽'
     stand = '≖'
     door = '⌸'
     water = '≋'
@@ -129,6 +180,7 @@ class Blocks:
     soldier = '⍾'
     hero1 = noto_tiles['man']
     gold = '☉'
+    rubbish = '⛁'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -195,6 +247,7 @@ class Loc:
     def mod_u(self):
         return self.mod(-1, 0)
 
+
 class Board:
     """Game board (single screen)."""
     def __init__(self, loc, _map):
@@ -252,13 +305,10 @@ class Board:
                 loc = Loc(x,y)
                 if char != BL.blank:
                     if char==BL.rock:
-                        self.put(BL.rock, loc)
+                        Item(Blocks.rock, '', loc, self._map)
                     elif char==Blocks.door:
                         d = Item(Blocks.door, 'door', loc, self._map)
                         doors.append(d)
-
-                    elif char=='s':
-                        Item(Blocks.sunflower, 'sunflower', loc, self._map)
 
                     elif char==Blocks.sharp_rock:
                         Item(Blocks.sharp_rock, 'sharp_rock', loc, type=Type.deadly, board_map=self._map)
@@ -283,7 +333,7 @@ class Board:
                     elif char==Blocks.fountain:
                         Item(Blocks.fountain, 'water fountain basin', loc, self._map)
 
-                    elif char in (BL.books, BL.open_book):
+                    elif char in (BL.book1, BL.book2):
                         Item(char, 'books', loc, self._map)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
@@ -308,15 +358,21 @@ class Board:
         c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
 
     def draw(self):
+        blt.clear()
+        blt.color("white")
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
                 # tricky bug: if an 'invisible' item put somewhere, then a being moves on top of it, it's drawn, but
                 # when it's moved out, the invisible item is drawn, but being an empty string, it doesn't draw over the
                 # being's char, so the 'image' of the being remains there, even after being moved away.
-                cell = [c for c in cell if str(c)]
+                cell = [c for c in cell if getattr(c,'char',None)!='']
                 a = last(cell)
-                if isinstance(a, int):
+                if isinstance(a, int) and a<500:
                     a = Objects.get_by_id(a)
+                col = getattr(a, 'color', None)
+                if col:
+                    a = f'[color={col}]{a}[/color]'
+                print("a", a)
                 puts(x,y, str(a))
         for y,x,txt in self.labels:
             puts(x,y,txt)
@@ -342,8 +398,6 @@ class Board:
         for x in self.get_all(loc):
             if isinstance(x, int):
                 x = Objects.get_by_id(x)
-            print("x", x)
-            print(getattr(x, 'type', None))
             if x in BLOCKING or getattr(x, 'type', None) in BLOCKING:
                 return True
         return False
@@ -359,6 +413,13 @@ class Boards:
 class BeingItemMixin:
     is_player = 0
     state = 0
+    color = None
+
+    def __str__(self):
+        c=self.char
+        if isinstance(c, int):
+            c = '[U+{}]'.format(hex(c)[2:])
+        return c
 
     def tele(self, loc):
         self.B.remove(self)
@@ -391,23 +452,20 @@ class BeingItemMixin:
     @property
     def B(self):
         if self.board_map:
-            print("self.board_map", self.board_map)
             return getattr(Boards, 'b_'+self.board_map)
 
 
 class Item(BeingItemMixin):
     board_map = None
 
-    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None):
-        self.char, self.name, self.loc, self.board_map, self.id, self.type = char, name, loc, board_map, id, type
+    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None):
+        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color = \
+                char, name, loc, board_map, id, type, color
         self.inv = defaultdict(int)
         if id:
             Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
-
-    def __str__(self):
-        return self.char
 
     def __repr__(self):
         return f'<I: {self.char}>'
@@ -435,24 +493,26 @@ class Castle(Item):
 
 class Being(BeingItemMixin):
     n = None
+    health = 1
+    max_health = 1
     is_being = 1
     type = None
     char = None
 
-    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?'):
-        self.id, self.loc, self.board_map, self.name, self.state, self.n  = id, loc, board_map, name, state, n
+    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?', color=None):
+        self.id, self.loc, self.board_map, self.name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
         self.char = self.char or char
         self.inv = defaultdict(int)
-        print("id", id)
         if id:
             Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
 
     def __str__(self):
-        return self.char
+        return super().__str__() if self.health>0 else Blocks.rubbish
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
+        """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
         if isinstance(dialog, int):
             dialog = conversations.get(dialog)
         being = objects.get(being) or being
@@ -516,7 +576,6 @@ class Being(BeingItemMixin):
             k=None
             while k!=' ':
                 k = parsekey(blt.read())
-            # prompt()
             self.B.draw()
 
 
@@ -535,15 +594,12 @@ class Being(BeingItemMixin):
         if rv and (rv[0] == LOAD_BOARD):
             return rv
         new = rv[1]
-        # top_obj = B.get_top_obj(new)
         if new and isinstance(B[new], Being):
             self.attack(B[new])
             return True, True
 
-        # TODO This is a little messy, doors are by type and keys are by ID
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
-            print("cas.type", cas.type)
             if cas.player == self.player:
                 cas.build_ui()
             else:
@@ -554,7 +610,6 @@ class Being(BeingItemMixin):
             new = None
 
         if new:
-            print(f'removing from {self.loc}')
             B.remove(self)
             if new[0] == LOAD_BOARD or new[0] is None:
                 return new
@@ -570,6 +625,7 @@ class Being(BeingItemMixin):
         top_obj = B.get_top_obj(new)
         items = B.get_all_obj(new)
         if top_obj:
+            # why does this work with unicode offsets? maybe it doesn't..
             if isinstance(top_obj, int):
                 top_obj = Objects[top_obj.id]
 
@@ -595,25 +651,14 @@ class Being(BeingItemMixin):
 
     def hit(self, obj):
         B=self.B
-        if obj.health:
-            obj.health -= 1
-            status(f'{self} hits {obj} for 1pt')
-            if obj.health <=0:
-                B.remove(obj)
-
-    def loot(self, cont):
-        items = {k:v for k,v in cont.inv.items() if v}
-        lst = []
-        for x in items:
-            if x==ID.gold:
-                self.gold+=1
-            else:
-                self.inv[x] += cont.inv[x]
-            cont.inv[x] = 0
-            lst.append(str(objects[x]))
-        status('You found {}'.format(', '.join(lst)))
-        if not items:
-            status(f'{cont.name} is empty')
+        a = self.strength * self.n
+        b = obj.health * obj.n
+        c = b - a
+        status(f'{self} hits {obj} for {a} HP')
+        if c <= 0:
+            status(f'{obj} dies')
+        else:
+            obj.n, obj.health = divmod(c, obj.max_health)
 
     def action(self):
         B=self.B
@@ -631,10 +676,8 @@ class Being(BeingItemMixin):
         def is_near(id):
             return getattr(ID, id) in B.get_ids(locs)
 
-        if cont:
-            self.loot(cont)
-
     def use(self):
+        """For spells maybe?"""
         win = newwin(len(self.inv), 40, 2, 10)
         ascii_letters = string.ascii_letters
         for n, (id,qty) in enumerate(self.inv.items()):
@@ -665,9 +708,6 @@ class Hero(Being):
         super().__init__(*args, **kwargs)
         self.player = player
 
-    def __str__(self):
-        return self.char
-
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
@@ -677,13 +717,14 @@ class Saves:
     loaded = 0
 
     def load(self, name):
-        global Objects
+        global Objects, done_events
         fn = f'saves/{name}.data'
         sh = shelve.open(fn, protocol=1)
         self.saves = sh['saves']
         s = self.saves[name]
         boards[:] = s['boards']
         Objects = s['objects']
+        done_events = s['done_events']
         player = objects[ID.player]
         loc = player.loc
         bl = s['cur_brd']
@@ -691,12 +732,6 @@ class Saves:
         return player, B
 
     def save(self, cur_brd, name=None):
-        if not name:
-            for n in range(1,999):
-                fn = f'saves/{n}.data'
-                name = str(n)
-                if not os.path.exists(fn+'.db'):
-                    break
         fn = f'saves/{name}.data'
         sh = shelve.open(fn, protocol=1)
         s = {}
@@ -734,64 +769,15 @@ def parsekey(k):
                 k = '?'
         return k
 
-keymap = dict(
-    [
-    [ blt.TK_SHIFT, 'SHIFT' ],
-    [ blt.TK_RETURN, '\n' ],
-    [ blt.TK_PERIOD, "." ],
 
-    [ blt.TK_Q, 'q' ],
-    [ blt.TK_W, 'w' ],
-    [ blt.TK_E, 'e' ],
-    [ blt.TK_R, 'r' ],
-    [ blt.TK_T, 't' ],
-    [ blt.TK_Y, 'y' ],
-    [ blt.TK_U, 'u' ],
-    [ blt.TK_I, 'i' ],
-    [ blt.TK_O, 'o' ],
-    [ blt.TK_P, 'p' ],
-    [ blt.TK_A, 'a' ],
-    [ blt.TK_S, 's' ],
-    [ blt.TK_D, 'd' ],
-    [ blt.TK_F, 'f' ],
-    [ blt.TK_G, 'g' ],
-    [ blt.TK_H, 'h' ],
-    [ blt.TK_J, 'j' ],
-    [ blt.TK_K, 'k' ],
-    [ blt.TK_L, 'l' ],
-    [ blt.TK_Z, 'z' ],
-    [ blt.TK_X, 'x' ],
-    [ blt.TK_C, 'c' ],
-    [ blt.TK_V, 'v' ],
-    [ blt.TK_B, 'b' ],
-    [ blt.TK_N, 'n' ],
-    [ blt.TK_M, 'm' ],
-
-    [ blt.TK_1, '1' ],
-    [ blt.TK_2, '2' ],
-    [ blt.TK_3, '3' ],
-    [ blt.TK_4, '4' ],
-    [ blt.TK_5, '5' ],
-    [ blt.TK_6, '6' ],
-    [ blt.TK_7, '7' ],
-    [ blt.TK_8, '8' ],
-    [ blt.TK_9, '9' ],
-    [ blt.TK_0, '0' ],
-
-    [ blt.TK_COMMA, ',' ],
-    [ blt.TK_SPACE, ' ' ],
-    [ blt.TK_MINUS, '-' ],
-    [ blt.TK_SLASH, '/' ],
-    ]
-    )
 def main(load_game):
     blt.open()
-    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono2.ttf, size=24")
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono2.ttf, size=24")
     blt.color("white")
     blt.composition(True)
 
     blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
-    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")           # GNU
+    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
 
     blt.clear()
     if not os.path.exists('saves'):
@@ -814,9 +800,7 @@ def main(load_game):
 
 def handle_ui():
     k = parsekey(blt.read())
-    blt.clear()
     puts(0,1, ' '*78)
-    puts(0,2,k)
     hero = Misc.hero
     if k=='q':
         return 0
