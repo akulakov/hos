@@ -506,6 +506,8 @@ class Castle(Item):
                 k = parsekey(blt.read())
                 if k == blt.TK_SHIFT:
                     continue
+                elif k == 'q':
+                    break
 
     def battle_ui(self):
         print('in battle_ui()')
@@ -602,7 +604,13 @@ class Being(BeingItemTownMixin):
 
 
     def _move(self, dir):
-        m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
+        # m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
+        my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
+        if mx==1 and my and self.loc.y%2==0:
+            mx=0
+        if mx==-1 and my and self.loc.y%2==1:
+            mx=0
+        m = my,mx
         if chk_oob(self.loc, *m):
             return True, self.loc.mod(*m)
         else:
@@ -809,6 +817,7 @@ def parsekey(k):
 
 def board_setup():
     Boards.b_town_ui = Board(Loc(0,0), 'town_ui')
+    Boards.b_town_ui.load_map('town_ui')
     Boards.b_1 = Board(Loc(0,1), '1')
     Boards.b_1.board_1()
     board_grid[:] = [
@@ -833,21 +842,23 @@ def main(load_game):
 
     Misc.player = Player('green', False)
 
-    Misc.hero = Objects.hero1
     ok=1
     board_setup()
+    Misc.hero = Objects.hero1
     Misc.B.draw()
     while ok:
         ok=handle_ui()
 
 def handle_ui():
     k = parsekey(blt.read())
+    if k == blt.TK_SHIFT:
+        return 1
     puts(0,1, ' '*78)
     hero = Misc.hero
     if k=='q':
         return 0
 
-    elif k in 'yubnhjklHL':
+    elif k in 'yubnhlHL':
         if k in 'HL':
             k = k.lower()
             for _ in range(5):
@@ -861,9 +872,9 @@ def handle_ui():
             loc = rv[1]
             x, y = hero.loc
             if k=='l': x = 0
-            if k=='h': x = 78
-            if k=='k': y = 15
-            if k=='j': y = 0
+            if k=='h': x = 37
+            if k in 'yu': y = 15
+            if k in 'bn': y = 0
 
             # ugly but....
             p_loc = Loc(x, y)
