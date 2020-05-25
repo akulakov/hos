@@ -10,6 +10,7 @@ import string
 from copy import copy  #, deepcopy
 
 HEIGHT = 16
+WIDTH = 38
 debug_log = open('debug', 'w')
 LOAD_BOARD = 999
 SLP = 0.01
@@ -156,7 +157,7 @@ class Type:
 
 class Blocks:
     """All game tiles."""
-    blank = ' '
+    blank = '.'
     rock = '█'
     platform = '⎽'
     stand = '≖'
@@ -181,6 +182,8 @@ class Blocks:
     hero1 = noto_tiles['man']
     gold = '☉'
     rubbish = '⛁'
+    cursor = '𐌏'
+    hut = '△'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -195,7 +198,7 @@ def mkcell():
     return [Blocks.blank]
 
 def mkrow():
-    return [mkcell() for _ in range(79)]
+    return [mkcell() for _ in range(WIDTH)]
 
 def first(x):
     return x[0] if x else None
@@ -297,15 +300,17 @@ class Board:
         self.containers = containers = []
         self.doors = doors = []
         self.specials = specials = defaultdict(list)
+        self.buildings = []
         BL=Blocks
 
         for y in range(HEIGHT):
-            for x in range(79):
+            for x in range(WIDTH):
                 char = _map[y][x]
                 loc = Loc(x,y)
                 if char != BL.blank:
                     if char==BL.rock:
-                        Item(Blocks.rock, '', loc, self._map)
+                        Item(Blocks.rock, '', loc, self._map, type=Type.blocking)
+
                     elif char==Blocks.door:
                         d = Item(Blocks.door, 'door', loc, self._map)
                         doors.append(d)
@@ -329,6 +334,11 @@ class Board:
 
                     elif char==Blocks.tulip:
                         Item(Blocks.tulip, 'tulip', loc, self._map)
+
+                    elif char==Blocks.hut:
+                        h=Hut(loc, self._map)
+                        self.put(h)
+                        self.buildings.append(h)
 
                     elif char==Blocks.fountain:
                         Item(Blocks.fountain, 'water fountain basin', loc, self._map)
@@ -372,7 +382,9 @@ class Board:
                 col = getattr(a, 'color', None)
                 if col:
                     a = f'[color={col}]{a}[/color]'
-                print("a", a)
+                x*=2
+                if y%2==1:
+                    x+=1
                 puts(x,y, str(a))
         for y,x,txt in self.labels:
             puts(x,y,txt)
@@ -410,7 +422,7 @@ print=debug
 class Boards:
     pass
 
-class BeingItemMixin:
+class BeingItemTownMixin:
     is_player = 0
     state = 0
     color = None
@@ -455,7 +467,7 @@ class BeingItemMixin:
             return getattr(Boards, 'b_'+self.board_map)
 
 
-class Item(BeingItemMixin):
+class Item(BeingItemTownMixin):
     board_map = None
 
     def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None):
@@ -487,11 +499,21 @@ class Castle(Item):
     def __repr__(self):
         return f'<C: {self.name}>'
 
-    def build_ui(self):
+    def town_ui(self):
+        while 1:
+            Boards.b_town_ui.draw()
+            while 1:
+                k = parsekey(blt.read())
+                if k == blt.TK_SHIFT:
+                    continue
+
+    def battle_ui(self):
+        print('in battle_ui()')
         pass
 
 
-class Being(BeingItemMixin):
+
+class Being(BeingItemTownMixin):
     n = None
     health = 1
     max_health = 1
@@ -601,7 +623,7 @@ class Being(BeingItemMixin):
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
             if cas.player == self.player:
-                cas.build_ui()
+                cas.town_ui()
             else:
                 cas.battle_ui()
             return None, None
@@ -704,12 +726,28 @@ class Being(BeingItemMixin):
 
 
 class Hero(Being):
+    army = [None] * 6
     def __init__(self, *args, player=None ,**kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
 
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
+
+class Peasant(Being):
+    strength = 1
+    defence = 1
+    cost = 1
+
+class Building(BeingItemTownMixin):
+    def __init__(self, loc=None, board_map=None):
+        self.loc, self.board_map = loc, board_map
+        # if board_map:
+            # self.B.put(self)
+
+class Hut(Building):
+    units = Peasant
+    char = Blocks.hut
 
 
 class Saves:
@@ -769,6 +807,15 @@ def parsekey(k):
                 k = '?'
         return k
 
+def board_setup():
+    Boards.b_town_ui = Board(Loc(0,0), 'town_ui')
+    Boards.b_1 = Board(Loc(0,1), '1')
+    Boards.b_1.board_1()
+    board_grid[:] = [
+        ['town_ui'],
+        ['1'],
+    ]
+    Misc.B = Boards.b_1
 
 def main(load_game):
     blt.open()
@@ -785,15 +832,10 @@ def main(load_game):
     Misc.is_game = 1
 
     Misc.player = Player('green', False)
-    Boards.b_1 = Board(Loc(0,0), '1')
-    Boards.b_1.board_1()
-    board_grid[:] = [
-        ['1'],
-    ]
-    Misc.B = Boards.b_1
 
     Misc.hero = Objects.hero1
     ok=1
+    board_setup()
     Misc.B.draw()
     while ok:
         ok=handle_ui()
@@ -904,7 +946,7 @@ def prompt():
         blt.refresh()
 
 
-def editor(stdscr, _map):
+def OLDeditor(stdscr, _map):
     Misc.is_game = 0
     curses.init_pair(1, curses.COLOR_BLUE, curses.COLOR_WHITE)
     begin_x = 0; begin_y = 0; width = 80
@@ -913,14 +955,12 @@ def editor(stdscr, _map):
     loc = Loc(40, 8)
     brush = None
     written = 0
-    Boards.b_1 = B = Board(Loc(0,0), _map)
+    board_setup()
     fname = f'maps/{_map}.map'
     if not os.path.exists(fname):
         with open(fname, 'w') as fp:
             for _ in range(HEIGHT):
                 fp.write(Blocks.blank*78 + '\n')
-    B.load_map(_map, 1)
-    B.draw()
 
     while 1:
         k = win.getkey()
@@ -1038,17 +1078,17 @@ def editor(_map):
     blt.clear()
     Misc.is_game = 0
     begin_x = 0; begin_y = 0; width = 80
-    loc = Loc(40, 8)
+    loc = Loc(20, 8)
     brush = None
     written = 0
-    B = Board(Loc(0,0), _map)
     fname = f'maps/{_map}.map'
     if not os.path.exists(fname):
         with open(fname, 'w') as fp:
             for _ in range(HEIGHT):
-                fp.write(blank*78 + '\n')
+                fp.write(Blocks.blank*78 + '\n')
+    B = Board(None, _map)
+    setattr(Boards, 'b_'+_map, B)
     B.load_map(_map, 1)
-
     B.draw()
 
     while 1:
@@ -1056,24 +1096,31 @@ def editor(_map):
         if k == blt.TK_SHIFT:
             continue
         if k=='Q': break
-        elif k and k in 'hjklyubnHL':
+        # elif k and k in 'hjklyubnHL':
+        elif k and k in 'hlyubnHL':
             n = 1
             if k in 'HL':
                 n = 5
-            m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
+            # m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
+            my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
+            if mx==1 and my and loc.y%2==0:
+                mx=0
+            if mx==-1 and my and loc.y%2==1:
+                mx=0
 
+            print("brush", brush)
             for _ in range(n):
                 if brush:
                     B.B[loc.y][loc.x] = [brush]
-                if chk_oob(loc.mod(*m)):
-                    loc = loc.mod(*m)
+                if chk_oob(loc.mod(my,mx)):
+                    loc = loc.mod(my,mx)
 
         elif k == ' ':
             brush = None
         elif k == 'e':
-            brush = ' '
+            brush = Blocks.blank
         elif k == 'r':
-            brush = rock
+            brush = Blocks.rock
         elif k == 's':
             B.put(Blocks.steps_r, loc)
             brush = Blocks.steps_r
@@ -1144,15 +1191,12 @@ def editor(_map):
                 k = parsekey(blt.read())
                 if k:
                     cmd += k
-                elif cmd == 'l':  B.put(BL.locker, loc)
+                if cmd == 'l':  B.put(BL.locker, loc)
                 elif cmd == 'b':  B.put(BL.books, loc)
                 elif cmd == 'ob': B.put(BL.open_book, loc)
                 elif cmd == 't':  B.put('t', loc)
                 elif cmd == 'f':  B.put(BL.fountain, loc)
-                elif cmd == 'a':  B.put(BL.antitank, loc)
                 elif cmd == 'p':  B.put(BL.platform2, loc)
-
-                elif cmd == 'oc':  B.put(BL.car, loc)
 
                 elif cmd == 'm': B.put(BL.monkey, loc)
                 elif cmd == 'v': B.put(BL.lever, loc)
@@ -1160,6 +1204,7 @@ def editor(_map):
                 elif cmd == 'r': B.put(BL.rock3, loc)
                 elif cmd == 'd': B.put('d', loc)     # drawing
                 elif cmd == 'R': B.put(Blocks.rabbit, loc)
+                elif cmd == 'h': B.put(Blocks.hut, loc)
 
                 elif any(c.startswith(cmd) for c in cmds):
                     continue
@@ -1171,7 +1216,7 @@ def editor(_map):
             if y=='Y':
                 for row in B.B:
                     for cell in row:
-                        cell[:] = [blank]
+                        cell[:] = [Blocks.blank]
                 B.B[-1][-1].append('_')
         elif k == 'f':
             B.put(Blocks.shelves, loc)
@@ -1190,12 +1235,13 @@ def editor(_map):
             written=1
 
         B.draw()
-        blt.clear_area(loc.x,loc.y,1,1)
-        puts(loc.x, loc.y, Blocks.circle3)
+        x = loc.x*2 + (0 if loc.y%2==0 else 1)
+        blt.clear_area(x,loc.y,1,1)
+        puts(x, loc.y, Blocks.cursor)
         refresh()
-        if brush==blank:
+        if brush==Blocks.blank:
             tool = 'eraser'
-        elif brush==rock:
+        elif brush==Blocks.rock:
             tool = 'rock'
         elif not brush:
             tool = ''
