@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-from curses import wrapper, newwin
-import curses
+from bearlibterminal import terminal as blt
 import os
 import sys
 from random import choice
@@ -18,15 +17,27 @@ SEQ_TYPES = (list, tuple)
 board_grid = []
 
 class ObjectsClass:
+    def __init__(self):
+        self.objects = {}
+
     def __setitem__(self, k, v):
-        setattr(self, f'id_{k}', v)
+        self.objects[getattr(ID, k)] = v
 
     def __getitem__(self, k):
-        return getattr(self, f'id_{k}')
+        return self.objects[getattr(ID, k)]
 
     def __getattr__(self, k):
         id = getattr(ID, k)
-        return getattr(self, f'id_{id}')
+        return self.objects[getattr(ID, k)]
+
+    def get(self, k, default=None):
+        return self.objects.get(getattr(ID, k, None))
+
+    def get_by_id(self, id):
+        return self.objects.get(id)
+
+    def set_by_id(self, id, v):
+        self.objects[id] = v
 
 Objects = ObjectsClass()
 
@@ -39,16 +50,12 @@ class Player:
     def __repr__(self):
         return f'<P: {self.name}>'
 
-class Castle:
-    def __init__(self, name, map_name, entry_loc, owner):
-        self.name, self.map_name, self.entry_loc, self.owner = name, map_name, entry_loc, owner
-
-    def __repr__(self):
-        return f'<C: {self.name}>'
-
 class Type:
     door1 = 1
     container = 2
+    blocking = 3
+    gate = 4
+    castle = 5
 
 class Blocks:
     """All game tiles."""
@@ -76,24 +83,14 @@ class Blocks:
     hero1 = '🙍'
     gold = '🌕'
 
-BLOCKING = [Blocks.rock, ]
+BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
 class ID:
     castle1 = 1
     hero1 = 2
 
-class Windows:
-    win2 = None
-
 class Misc:
     pass
-
-class Colors:
-    blue_on_white = 1
-    yellow_on_white = 2
-    green_on_white = 3
-    yellow_on_black = 4
-    blue_on_black = 5
 
 def mkcell():
     return [Blocks.blank]
@@ -111,16 +108,9 @@ def chk_oob(loc, y=0, x=0):
 
 def chk_b_oob(loc, y=0, x=0):
     h = len(board_grid)
-    w = len(board_grid[1])
+    w = len(board_grid[0])
     newx, newy = loc.x+x, loc.y+y
     return 0 <= newy <= h-1 and 0 <= newx <= w-1
-
-def pdb(*arg):
-    curses.nocbreak()
-    Windows.win.keypad(0)
-    curses.echo()
-    curses.endwin()
-    import pdb; pdb.set_trace()
 
 class Loc:
     def __init__(self, x, y):
@@ -163,7 +153,6 @@ class Board:
     def __init__(self, loc, _map):
         self.B = [mkrow() for _ in range(HEIGHT)]
         self.labels = []
-        self.colors = []
         self.loc = loc
         self._map = str(_map)
         # map_to_loc[str(_map)] = loc
@@ -173,7 +162,8 @@ class Board:
 
     def __getitem__(self, loc):
         o = self.B[loc.y][loc.x][-1]
-        if isinstance(o,int): o = objects[o]
+        if isinstance(o,int):
+            o = Objects.get_by_id(o)
         return o
 
     def __iter__(self):
@@ -183,7 +173,8 @@ class Board:
 
     def found_type_at(self, type, loc):
         def get_obj(x):
-            return Objects.get(x) or x
+            return Objects.get_by_id(x) or x
+        print("self.get_all_obj(loc)", self.get_all_obj(loc))
         return any(get_obj(x).type==type for x in self.get_all_obj(loc))
 
     def get_all(self, loc):
@@ -195,7 +186,7 @@ class Board:
         cell.remove(obj if obj in cell else obj.id)
 
     def get_all_obj(self, loc):
-        return [Objects.get(n) or n for n in self.B[loc.y][loc.x] if not isinstance(n, str)]
+        return [Objects.get_by_id(n) or n for n in self.B[loc.y][loc.x] if not isinstance(n, str)]
 
     def load_map(self, map_num, for_editor=0):
         _map = open(f'maps/{map_num}.map').readlines()
@@ -262,9 +253,10 @@ class Board:
     def board_1(self):
         self.load_map('1')
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
-        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1)
+        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player)
+        c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
 
-    def draw(self, win):
+    def draw(self):
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
                 # tricky bug: if an 'invisible' item put somewhere, then a being moves on top of it, it's drawn, but
@@ -273,15 +265,12 @@ class Board:
                 cell = [c for c in cell if str(c)]
                 a = last(cell)
                 if isinstance(a, int):
-                    a = Objects[a]
-                win.addstr(y,x, str(a))
+                    a = Objects.get_by_id(a)
+                puts(x,y, str(a))
         for y,x,txt in self.labels:
-            win.addstr(y,x,txt)
-        for loc, col in self.colors:
-            win.addstr(loc.y, loc.x, str(self[loc]), curses.color_pair(col))
-        win.refresh()
-        if Windows.win2:
-            Windows.win2.addstr(0,74, str(self._map))
+            puts(x,y,txt)
+        refresh()
+        puts2(74,0, str(self._map))
 
     def put(self, obj, loc=None):
         """
@@ -301,7 +290,9 @@ class Board:
     def is_blocked(self, loc):
         for x in self.get_all(loc):
             if isinstance(x, int):
-                x = objects[x]
+                x = Objects.get_by_id(x)
+            print("x", x)
+            print(getattr(x, 'type', None))
             if x in BLOCKING or getattr(x, 'type', None) in BLOCKING:
                 return True
         return False
@@ -360,7 +351,7 @@ class Item(BeingItemMixin):
         self.char, self.name, self.loc, self.board_map, self.id, self.type = char, name, loc, board_map, id, type
         self.inv = defaultdict(int)
         if id:
-            objects[id] = self
+            Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
 
@@ -378,6 +369,18 @@ class Item(BeingItemMixin):
             self.loc = new
             self.B.put(self)
 
+class Castle(Item):
+    def __init__(self, *args, player=None, **kwargs):
+        self.player = player
+        super().__init__(Blocks.door, *args, **kwargs)
+        self.type = Type.castle
+
+    def __repr__(self):
+        return f'<C: {self.name}>'
+
+    def build_ui(self):
+        pass
+
 
 class Being(BeingItemMixin):
     n = None
@@ -391,7 +394,7 @@ class Being(BeingItemMixin):
         self.inv = defaultdict(int)
         print("id", id)
         if id:
-            Objects[id] = self
+            Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
 
@@ -399,10 +402,13 @@ class Being(BeingItemMixin):
         return self.char
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
+        if isinstance(dialog, int):
+            dialog = conversations.get(dialog)
         being = objects.get(being) or being
         loc = being.loc
         if isinstance(dialog, str):
             dialog = [dialog]
+        dialog = dialog or conversations[being.id]
         x = min(loc.x, 60)
         multichoice = 0
 
@@ -415,48 +421,53 @@ class Being(BeingItemMixin):
                 txt = '\n'.join(lst)
             x = min(40, x)
             w = 78 - x
+            if yesno:
+                txt += ' [[Y/N]]'
             lines = (len(txt) // w) + 4
-            txt = wrap(txt, w)
-            txt = '\n'.join(txt)
+            txt_lines = wrap(txt, w)
+            txt = '\n'.join(txt_lines)
             offset_y = lines if loc.y<8 else -lines
 
             y = max(0, loc.y+offset_y)
-            win = newwin(lines+2, w+2, y, x)
-            win.addstr(1,1, txt + (' [Y/N]' if yesno else ''))
+            W = max(len(l) for l in txt_lines)
+            blt.clear_area(x+1, y+1, W, len(txt_lines))
+            puts(x+1,y+1, txt)
+            refresh()
 
             if yesno:
                 # TODO in some one-time dialogs, may need to detect 'no' explicitly
-                k = win.getkey()
-                del win
+                k = parsekey(blt.read())
                 return k in 'Yy'
 
             elif multichoice:
                 for _ in range(2):
-                    k = win.getkey()
+                    k = parsekey(blt.read())
                     try:
                         k=int(k)
                     except ValueError:
                         k = 0
                     if k in range(1, multichoice+1):
-                        del win
                         return k
 
             if resp and m==len(dialog)-1:
                 i=''
+                puts(0,1, '> ')
+                refresh()
                 for _ in range(10):
-                    k=win.getkey()
-                    if k=='\n': break
+                    k = parsekey(blt.read())
+                    if k==' ': break
                     i+=k
-                    status(i)
-                    Windows.win2.refresh()
-                del win
+                    puts(0,1, '> '+i)
+                    refresh()
                 return i
 
-            win.getkey()
-            del win
-            self.B.draw(Windows.win)
-            Windows.win2.clear()
-            Windows.win2.refresh()
+            refresh()
+            k=None
+            while k!=' ':
+                k = parsekey(blt.read())
+            # prompt()
+            self.B.draw()
+
 
     def _move(self, dir):
         m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
@@ -473,14 +484,15 @@ class Being(BeingItemMixin):
         if rv and (rv[0] == LOAD_BOARD):
             return rv
         new = rv[1]
+        # top_obj = B.get_top_obj(new)
         if new and isinstance(B[new], Being):
             self.attack(B[new])
             return True, True
 
         # TODO This is a little messy, doors are by type and keys are by ID
-        if new and B.found_type_at(Type.door1, new):
-            d = B[new]
-            cas = Objects[d.id]
+        if new and B.found_type_at(Type.castle, new):
+            cas = B[new]
+            print("cas.type", cas.type)
             if cas.player == self.player:
                 cas.build_ui()
             else:
@@ -497,7 +509,7 @@ class Being(BeingItemMixin):
                 return new
             self.loc = new
             self.put(new)
-            Windows.win2.refresh()
+            refresh()
             return True, True
         return None, None
 
@@ -649,49 +661,124 @@ class Saves:
         return B.get_all(player.loc), name
 
 
+def puts(x, y, text):
+    blt.puts(x, y, text)
 
-def main(stdscr, load_game):
+def puts2(x, y, text):
+    blt.puts(x, y+HEIGHT, text)
+
+def refresh():
+    blt.refresh()
+
+def parsekey(k):
+    if k==blt.TK_SHIFT:
+        return k
+    if k and blt.check(blt.TK_WCHAR) or k==blt.TK_RETURN:
+        k = keymap.get(k)
+        if k and blt.state(blt.TK_SHIFT):
+            k = k.upper()
+            if k=='-':
+                k = '_'
+            if k=='/':
+                k = '?'
+        return k
+
+keymap = dict(
+    [
+    [ blt.TK_SHIFT, 'SHIFT' ],
+    [ blt.TK_RETURN, '\n' ],
+    [ blt.TK_PERIOD, "." ],
+
+    [ blt.TK_Q, 'q' ],
+    [ blt.TK_W, 'w' ],
+    [ blt.TK_E, 'e' ],
+    [ blt.TK_R, 'r' ],
+    [ blt.TK_T, 't' ],
+    [ blt.TK_Y, 'y' ],
+    [ blt.TK_U, 'u' ],
+    [ blt.TK_I, 'i' ],
+    [ blt.TK_O, 'o' ],
+    [ blt.TK_P, 'p' ],
+    [ blt.TK_A, 'a' ],
+    [ blt.TK_S, 's' ],
+    [ blt.TK_D, 'd' ],
+    [ blt.TK_F, 'f' ],
+    [ blt.TK_G, 'g' ],
+    [ blt.TK_H, 'h' ],
+    [ blt.TK_J, 'j' ],
+    [ blt.TK_K, 'k' ],
+    [ blt.TK_L, 'l' ],
+    [ blt.TK_Z, 'z' ],
+    [ blt.TK_X, 'x' ],
+    [ blt.TK_C, 'c' ],
+    [ blt.TK_V, 'v' ],
+    [ blt.TK_B, 'b' ],
+    [ blt.TK_N, 'n' ],
+    [ blt.TK_M, 'm' ],
+
+    [ blt.TK_1, '1' ],
+    [ blt.TK_2, '2' ],
+    [ blt.TK_3, '3' ],
+    [ blt.TK_4, '4' ],
+    [ blt.TK_5, '5' ],
+    [ blt.TK_6, '6' ],
+    [ blt.TK_7, '7' ],
+    [ blt.TK_8, '8' ],
+    [ blt.TK_9, '9' ],
+    [ blt.TK_0, '0' ],
+
+    [ blt.TK_COMMA, ',' ],
+    [ blt.TK_SPACE, ' ' ],
+    [ blt.TK_MINUS, '-' ],
+    [ blt.TK_SLASH, '/' ],
+    ]
+    )
+def main(load_game):
+    blt.open()
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono2.ttf, size=24")
+    blt.color("white")
+    blt.composition(True)
+
+    blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
+    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")           # GNU
+
+    blt.clear()
     if not os.path.exists('saves'):
         os.mkdir('saves')
     Misc.is_game = 1
-    curses.init_pair(Colors.blue_on_white, curses.COLOR_BLUE, curses.COLOR_WHITE)
-    curses.init_pair(Colors.yellow_on_white, curses.COLOR_YELLOW, curses.COLOR_WHITE)
-    curses.init_pair(Colors.green_on_white, curses.COLOR_GREEN, curses.COLOR_WHITE)
-    curses.init_pair(Colors.yellow_on_black, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-    curses.init_pair(Colors.blue_on_black, curses.COLOR_BLUE, curses.COLOR_BLACK)
 
-    begin_x = 0; begin_y = 0; width = 80
-    win = Windows.win = newwin(HEIGHT, width, begin_y, begin_x)
-    begin_x = 0; begin_y = 16; height = 6; width = 80
-    win2 = Windows.win2 = newwin(height, width, begin_y, begin_x)
-
+    Misc.player = Player('green', False)
     Boards.b_1 = Board(Loc(0,0), '1')
     Boards.b_1.board_1()
     board_grid[:] = [
         ['1'],
     ]
     Misc.B = Boards.b_1
-    Misc.player = Player('green', False)
 
-    # def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?'):
     Misc.hero = Objects.hero1
     ok=1
-    Misc.B.draw(win)
+    Misc.B.draw()
     while ok:
         ok=handle_ui()
 
 def handle_ui():
-    win, win2 = Windows.win, Windows.win2
-    k = win.getkey()
-    win2.clear()
-    win2.addstr(1,0, ' '*78)
-    win2.addstr(2,0,k)
+    k = parsekey(blt.read())
+    blt.clear()
+    puts(0,1, ' '*78)
+    puts(0,2,k)
     hero = Misc.hero
     if k=='q':
         return 0
 
-    elif k in 'yubnhjkl':
-        rv = hero.move(k)
+    elif k in 'yubnhjklHL':
+        if k in 'HL':
+            k = k.lower()
+            for _ in range(5):
+                rv = hero.move(k)
+                if rv[0] == LOAD_BOARD:
+                    break
+        else:
+            rv = hero.move(k)
 
         if rv[0] == LOAD_BOARD:
             loc = rv[1]
@@ -715,30 +802,35 @@ def handle_ui():
         name = prompt(win2)
         Saves().save(Misc.B.loc, name)
         status(f'Saved game as "{name}"')
-        Windows.win2.refresh()
+        refresh()
     elif k == 'v':
         status(str(hero.loc))
     elif k == ' ':
         hero.action()
     elif k == '5' and DBG:
-        k = win.getkey()
-        k+= win.getkey()
-        try:
-            print(Misc.B.B[int(k)])
-            status(f'printed row {k} to debug')
-        except:
-            status('try again')
+        k = parsekey(blt.read())
+        k2 = parsekey(blt.read())
+        if k and k2:
+            try:
+                print(B.B[int(k+k2)])
+                status(f'printed row {k+k2} to debug')
+            except:
+                status('try again')
+
     elif k == 't' and DBG:
         # debug teleport
-        k = ''
+        mp = ''
         while 1:
-            k+=win.getkey()
-            status(k)
-            win2.refresh()
-            if k.endswith(' '):
+            k = parsekey(blt.read())
+            if not k: break
+            mp+=k
+            status(mp)
+            Windows.refresh()
+            if mp.endswith(' '):
                 try:
-                    x,y=k[:-1].split(',')
-                    hero.tele(Loc(int(x), int(y)))
+                    x,y=mp[:-1].split(',')
+                    print(Loc(int(x), int(y)))
+                    player.tele(Loc(int(x), int(y)))
                 except Exception as e:
                     print(e)
                 break
@@ -758,10 +850,23 @@ def handle_ui():
                 txt.append(f'{item.name} {n}')
         Misc.B.display(txt)
 
-    Misc.B.draw(win)
-    win2.addstr(0,0, f'[Gold:{Misc.player.gold}]')
-    win2.refresh()
+    Misc.B.draw()
+    puts2(0,0, f'[Gold:{Misc.player.gold}]')
+    blt.refresh()
     return 1
+
+def prompt():
+    mp = ''
+    status('> ')
+    blt.refresh()
+    while 1:
+        k = parsekey(blt.read())
+        if not k: continue
+        if k=='\n':
+            return mp
+        mp += k
+        status('> '+mp)
+        blt.refresh()
 
 
 def editor(stdscr, _map):
@@ -780,7 +885,7 @@ def editor(stdscr, _map):
             for _ in range(HEIGHT):
                 fp.write(Blocks.blank*78 + '\n')
     B.load_map(_map, 1)
-    B.draw(win)
+    B.draw()
 
     while 1:
         k = win.getkey()
@@ -862,7 +967,7 @@ def editor(stdscr, _map):
                         fp.write(str(cell[-1]))
                     fp.write('\n')
             written=1
-        B.draw(win)
+        B.draw()
         if brush==Blocks.blank:
             tool = 'eraser'
         elif brush==Blocks.rock:
@@ -880,16 +985,207 @@ def editor(stdscr, _map):
         win.move(loc.y, loc.x)
 
 def status(msg):
-    Windows.win2.addstr(2,0,msg)
+    puts(0,2,msg)
+
+
+def editor(_map):
+    blt.open()
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono2.ttf, size=24")
+    blt.color("white")
+    blt.composition(True)
+
+    # blt.set("U+E200: Tiles.png, size=24x24, align=top-left")
+    # blt.set("U+E300: fontawesome-webfont.ttf, size=16x16, spacing=3x2, codepage=fontawesome-codepage.txt")
+    # blt.set("U+E300: fontello.ttf, size=16x16, spacing=3x2, codepage=cp.txt")
+    blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
+    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")           # GNU
+
+    blt.clear()
+    Misc.is_game = 0
+    begin_x = 0; begin_y = 0; width = 80
+    loc = Loc(40, 8)
+    brush = None
+    written = 0
+    B = Board(Loc(0,0), _map)
+    fname = f'maps/{_map}.map'
+    if not os.path.exists(fname):
+        with open(fname, 'w') as fp:
+            for _ in range(HEIGHT):
+                fp.write(blank*78 + '\n')
+    B.load_map(_map, 1)
+
+    B.draw()
+
+    while 1:
+        k = parsekey(blt.read())
+        if k == blt.TK_SHIFT:
+            continue
+        if k=='Q': break
+        elif k and k in 'hjklyubnHL':
+            n = 1
+            if k in 'HL':
+                n = 5
+            m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
+
+            for _ in range(n):
+                if brush:
+                    B.B[loc.y][loc.x] = [brush]
+                if chk_oob(loc.mod(*m)):
+                    loc = loc.mod(*m)
+
+        elif k == ' ':
+            brush = None
+        elif k == 'e':
+            brush = ' '
+        elif k == 'r':
+            brush = rock
+        elif k == 's':
+            B.put(Blocks.steps_r, loc)
+            brush = Blocks.steps_r
+        elif k == '/':
+            B.put(Blocks.angled1, loc)
+            brush = Blocks.angled1
+        elif k == '\\':
+            B.put(Blocks.angled2, loc)
+            brush = Blocks.angled2
+        elif k == 'S':
+            B.put(Blocks.steps_l, loc)
+            brush = Blocks.steps_l
+        elif k == 'M':
+            B.put(Blocks.smoke_pipe, loc)
+        elif k == 'd':
+            B.put('d', loc)
+        elif k and k in '0123456789':
+            B.put(k, loc)
+        elif k == 'w':
+            Item(B, Blocks.water, 'water', loc)
+        elif k == 't':
+            B.put(Blocks.stool, loc)
+        elif k == 'a':
+            B.put(Blocks.ladder, loc)
+        elif k == 'c':
+            B.put(Blocks.cupboard, loc)
+        elif k == 'B':
+            B.put(Blocks.dock_boards, loc)
+        elif k == 'p':
+            B.put(Blocks.platform_top, loc)
+        elif k == 'g':
+            B.put(Blocks.grill, loc)
+        elif k == 'F':
+            B.put(Blocks.ferry, loc)
+        elif k == 'A':
+            B.put(Blocks.bars, loc)
+        elif k == 'R':
+            B.put(Blocks.rubbish, loc)
+
+        # NPCs
+        elif k == 'G':
+            B.put(Blocks.elephant, loc)
+        elif k == 'O':
+            B.put(Blocks.soldier, loc)
+
+        elif k == 'T':
+            B.put(choice((Blocks.tree1, Blocks.tree2)), loc)
+        elif k == 'z':
+            B.put(Blocks.guardrail_m, loc)
+            brush = Blocks.guardrail_m
+        elif k == 'x':
+            B.put(Blocks.rock2, loc)
+            brush = Blocks.rock2
+        elif k == 'X':
+            B.put(Blocks.shelves, loc)
+        elif k == 'C':
+            B.put(Blocks.cactus, loc)
+        elif k == 'v':
+            B.put(Blocks.snowflake, loc)
+        elif k == 'V':
+            B.put(Blocks.snowman, loc)
+
+        elif k == 'o':
+            cmds = 'gm gl gr l b ob f'.split()
+            cmd = ''
+            BL=Blocks
+            while 1:
+                k = parsekey(blt.read())
+                if k:
+                    cmd += k
+                elif cmd == 'l':  B.put(BL.locker, loc)
+                elif cmd == 'b':  B.put(BL.books, loc)
+                elif cmd == 'ob': B.put(BL.open_book, loc)
+                elif cmd == 't':  B.put('t', loc)
+                elif cmd == 'f':  B.put(BL.fountain, loc)
+                elif cmd == 'a':  B.put(BL.antitank, loc)
+                elif cmd == 'p':  B.put(BL.platform2, loc)
+
+                elif cmd == 'oc':  B.put(BL.car, loc)
+
+                elif cmd == 'm': B.put(BL.monkey, loc)
+                elif cmd == 'v': B.put(BL.lever, loc)
+                elif cmd == 's': B.put(BL.sharp_rock, loc)
+                elif cmd == 'r': B.put(BL.rock3, loc)
+                elif cmd == 'd': B.put('d', loc)     # drawing
+                elif cmd == 'R': B.put(Blocks.rabbit, loc)
+
+                elif any(c.startswith(cmd) for c in cmds):
+                    continue
+                break
+
+        elif k == 'E':
+            puts(2,2, 'Are you sure you want to clear the map? [Y/N]')
+            y = parsekey(blt.read())
+            if y=='Y':
+                for row in B.B:
+                    for cell in row:
+                        cell[:] = [blank]
+                B.B[-1][-1].append('_')
+        elif k == 'f':
+            B.put(Blocks.shelves, loc)
+        elif k == 'W':
+            val_to_k = {v:k for k,v in Blocks.__dict__.items()}
+            with open(f'maps/{_map}.map', 'w') as fp:
+                for row in B.B:
+                    for cell in row:
+                        a = cell[-1]
+                        char = getattr(a, 'char', None)
+                        if char and isinstance(char,int) and char>500:
+                            k = val_to_k[char]
+                            a = getattr(OLDBlocks, k)
+                        fp.write(str(a))
+                    fp.write('\n')
+            written=1
+
+        B.draw()
+        blt.clear_area(loc.x,loc.y,1,1)
+        puts(loc.x, loc.y, Blocks.circle3)
+        refresh()
+        if brush==blank:
+            tool = 'eraser'
+        elif brush==rock:
+            tool = 'rock'
+        elif not brush:
+            tool = ''
+        else:
+            tool = brush
+        puts(73,1, tool)
+        puts(0 if loc.x>40 else 70,
+             0, str(loc))
+        if written:
+            puts(65,2, 'map written')
+            written=0
+        # win.move(loc.y, loc.x)
+    blt.set("U+E100: none; U+E200: none; U+E300: none; zodiac font: none")
+    blt.composition(False)
+    blt.close()
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
-    DBG = first(argv) == '-d'
     load_game = None
-    a = first(argv)
-    if a and a.startswith('-l'):
-        load_game = a[2:]
+    for a in argv:
+        if a == '-d':
+            DBG = True
+        if a and a.startswith('-l'):
+            load_game = a[2:]
     if first(argv) == 'ed':
-        wrapper(editor, argv[1])
+        editor(argv[1])
     else:
-        wrapper(main, load_game)
+        main(load_game)
