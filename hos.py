@@ -140,7 +140,7 @@ class ObjectsClass:
 Objects = ObjectsClass()
 
 class Player:
-    gold = 0
+    gold = 20
 
     def __init__(self, name, is_ai):
         self.name, self.is_ai = name, is_ai
@@ -184,6 +184,26 @@ class Blocks:
     rubbish = '⛁'
     cursor = '𐌏'
     hut = '△'
+    sub_1 = '₁'
+    sub_2 = '₂'
+    sub_3 = '₃'
+    sub_4 = '₄'
+    sub_5 = '₅'
+    sub_6 = '₆'
+    sub_7 = '₇'
+    sub_8 = '₈'
+    sub_9 = '₉'
+    sub = [None,
+           sub_1,
+           sub_2,
+           sub_3,
+           sub_4,
+           sub_5,
+           sub_6,
+           sub_7,
+           sub_8,
+           sub_9,
+          ]
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -305,7 +325,7 @@ class Board:
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
-                char = _map[y][x]
+                char = _map[y][x*2 + (0 if y%2==0 else 1)]
                 loc = Loc(x,y)
                 if char != BL.blank:
                     if char==BL.rock:
@@ -377,15 +397,23 @@ class Board:
                 # being's char, so the 'image' of the being remains there, even after being moved away.
                 cell = [c for c in cell if getattr(c,'char',None)!='']
                 a = last(cell)
+                if isinstance(a, str):
+                    puts(x,y,a)
+                    continue
                 if isinstance(a, int) and a<500:
                     a = Objects.get_by_id(a)
-                col = getattr(a, 'color', None)
-                if col:
-                    a = f'[color={col}]{a}[/color]'
+                if a.color:
+                    a = f'[color={a.color}]{a}[/color]'
                 x*=2
                 if y%2==1:
                     x+=1
-                puts(x,y, str(a))
+                if a._str:
+                    # combined glyps
+                    for _s in a._str():
+                        puts(x,y,_s)
+                else:
+                    puts(x,y, str(a))
+
         for y,x,txt in self.labels:
             puts(x,y,txt)
         refresh()
@@ -426,6 +454,7 @@ class BeingItemTownMixin:
     is_player = 0
     state = 0
     color = None
+    _str = None
 
     def __str__(self):
         c=self.char
@@ -491,6 +520,8 @@ class Item(BeingItemTownMixin):
             self.B.put(self)
 
 class Castle(Item):
+    weekly_income = 250
+
     def __init__(self, *args, player=None, **kwargs):
         self.player = player
         super().__init__(Blocks.door, *args, **kwargs)
@@ -745,17 +776,30 @@ class Hero(Being):
 class Peasant(Being):
     strength = 1
     defence = 1
-    cost = 1
+    cost = 15
 
 class Building(BeingItemTownMixin):
+    available = 0
     def __init__(self, loc=None, board_map=None):
         self.loc, self.board_map = loc, board_map
         # if board_map:
             # self.B.put(self)
 
+    def __repr__(self):
+        char = super().__repr__()
+        return f'<H: {self.name} ({self.player})>'
+
+    def _str(self):
+        return str(self), getitem(Blocks.sub, self.available, '+')
+
+def getitem(it, ind=0, default=None):
+    try: return it[ind]
+    except IndexError: return default
+
 class Hut(Building):
     units = Peasant
     char = Blocks.hut
+    available = 5
 
 
 class Saves:
@@ -1095,8 +1139,10 @@ def editor(_map):
     fname = f'maps/{_map}.map'
     if not os.path.exists(fname):
         with open(fname, 'w') as fp:
-            for _ in range(HEIGHT):
-                fp.write(Blocks.blank*78 + '\n')
+            for n in range(HEIGHT):
+                prefix = '' if n%2==0 else ' '
+                print(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
+                fp.write(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
     B = Board(None, _map)
     setattr(Boards, 'b_'+_map, B)
     B.load_map(_map, 1)
@@ -1232,16 +1278,18 @@ def editor(_map):
         elif k == 'f':
             B.put(Blocks.shelves, loc)
         elif k == 'W':
-            val_to_k = {v:k for k,v in Blocks.__dict__.items()}
+            # val_to_k = {v:k for k,v in Blocks.__dict__.items()}
             with open(f'maps/{_map}.map', 'w') as fp:
-                for row in B.B:
+                for n, row in enumerate(B.B):
+                    if n%2==1:
+                        fp.write(' ')
                     for cell in row:
                         a = cell[-1]
-                        char = getattr(a, 'char', None)
-                        if char and isinstance(char,int) and char>500:
-                            k = val_to_k[char]
-                            a = getattr(OLDBlocks, k)
-                        fp.write(str(a))
+                        # char = getattr(a, 'char', None)
+                        # if char and isinstance(char,int) and char>500:
+                        #     k = val_to_k[char]
+                        #     a = getattr(OLDBlocks, k)
+                        fp.write(str(a) + ' ')
                     fp.write('\n')
             written=1
 
