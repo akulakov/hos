@@ -16,6 +16,52 @@ SLP = 0.01
 SEQ_TYPES = (list, tuple)
 board_grid = []
 
+noto_tiles = """fountain
+sailboat
+snowman
+snowflake
+water
+tree1
+tree2
+palm
+cactus
+flower1
+flower2
+flower3
+flower4
+flower5
+leaf1
+leaf2
+leaf3
+guitar
+trumpet
+monkey
+elephant
+soldier
+card
+chair
+PC
+sharp-rock1
+sharp-rock2
+book1
+book2
+book3
+book4
+book5
+key
+seal
+truck
+ship
+flag
+man
+girl
+door
+bull
+cow
+funfrock
+""".split()
+noto_tiles = {k: 0xe300+n for n,k in enumerate(noto_tiles)}
+
 class ObjectsClass:
     def __init__(self):
         self.objects = {}
@@ -61,27 +107,28 @@ class Blocks:
     """All game tiles."""
     blank = ' '
     rock = '█'
-    platform = '▁'
-    door = '🚪'
-    water = '⏖'
-    fountain = '‿'
-    tree1 = '🌲'
-    tree2 = '🌳'
-    rock2 = '▧'
-    rock3 = '▓'
-    cactus = '🌵'
-    tulip = '🌷'
+    platform = '⎽'͟
+    stand = '≖'
+    door = '⌸'
+    water = '≋'
+    fountain = '␣'
+    tree1 = noto_tiles['tree1']
+    tree2 = noto_tiles['tree2']
+    rock2 = '▅'
+    rock3 = '░'
+    cactus = noto_tiles['cactus']
+    tulip = noto_tiles['flower1']
     snowman = '☃'
-    snowflake = '❄'
-    books = '📚'
-    open_book = '📖'
-    lever = '⎆'
-    sharp_rock = '⩕'
-    statue = 'Ω'
+    snowflake = noto_tiles['snowflake']
+    book1 = noto_tiles['book1']
+    book2 = noto_tiles['book2']
+    lever = '╖'
+    sharp_rock = noto_tiles['sharp-rock1']
+    statue = 'Ộ'
     hexagon = '⎔'
     soldier = '⍾'
-    hero1 = '🙍'
-    gold = '🌕'
+    hero1 = noto_tiles['man']
+    gold = '☉'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -155,7 +202,6 @@ class Board:
         self.labels = []
         self.loc = loc
         self._map = str(_map)
-        # map_to_loc[str(_map)] = loc
 
     def __repr__(self):
         return f'<B: {self._map}>'
@@ -174,11 +220,14 @@ class Board:
     def found_type_at(self, type, loc):
         def get_obj(x):
             return Objects.get_by_id(x) or x
-        print("self.get_all_obj(loc)", self.get_all_obj(loc))
-        return any(get_obj(x).type==type for x in self.get_all_obj(loc))
+        return any(
+            get_obj(x).type==type for x in self.get_all_obj(loc)
+        )
 
     def get_all(self, loc):
-        return [n for n in self.B[loc.y][loc.x] if n!=Blocks.blank]
+        return [n for n in self.B[loc.y][loc.x]
+                if n!=Blocks.blank
+               ]
 
     def remove(self, obj, loc=None):
         loc = loc or obj.loc
@@ -186,7 +235,9 @@ class Board:
         cell.remove(obj if obj in cell else obj.id)
 
     def get_all_obj(self, loc):
-        return [Objects.get_by_id(n) or n for n in self.B[loc.y][loc.x] if not isinstance(n, str)]
+        return [Objects.get_by_id(n) or n for n in self.B[loc.y][loc.x]
+                if not isinstance(n, str)
+               ]
 
     def load_map(self, map_num, for_editor=0):
         _map = open(f'maps/{map_num}.map').readlines()
