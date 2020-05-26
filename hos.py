@@ -147,6 +147,10 @@ Objects = ObjectsClass()
 
 class Player:
     gold = 250
+    wood = 0
+    rock = 0
+    mercury = 0
+    sulphur = 0
 
     def __init__(self, name, is_ai):
         self.name, self.is_ai = name, is_ai
@@ -851,6 +855,9 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
+    def real_army(self):
+        return list(filter(None, self.army))
+
 class Peasant(Being):
     strength = 1
     defence = 1
@@ -1084,9 +1091,23 @@ def handle_ui():
         Misc.B.display(txt)
 
     Misc.B.draw()
-    puts2(0,0, f'[Gold:{Misc.player.gold}]')
-    blt.refresh()
+    player = Misc.player
+    n = len(hero.real_army())
+
+    st = f'[Gold:{Misc.player.gold}][Wood:{Misc.player.wood}][Rock:{Misc.player.rock}][Mercury:{Misc.player.mercury}][Sulphur:{Misc.player.sulphur}]'
+    x = len(st)+2
+    puts2(1,0,blt_esc(st))
+    for x2 in range(n-1):
+        puts2(x+x2*2,0,'|')
+    for a in hero.real_army():
+        puts2(x,0,a)
+        x+=2
+
+    refresh()
     return 1
+
+def blt_esc(txt):
+    return txt.replace('[','[[').replace(']',']]')
 
 def prompt():
     mp = ''
