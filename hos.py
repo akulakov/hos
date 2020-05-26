@@ -429,12 +429,7 @@ class Board:
                     a = Objects.get_by_id(a)
                 if a.color:
                     a = f'[color={a.color}]{a}[/color]'
-                if a._str:
-                    # combined glyps
-                    for _s in a._str():
-                        puts(x,y,_s)
-                else:
-                    puts(x,y, str(a))
+                puts(x,y,a)
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
@@ -599,18 +594,20 @@ class Castle(Item):
                 self.player.gold = gold
                 # Hope there's enough empty slots!
                 for type, n in recruited.items():
-                    for n, slot in enumerate(self.current_hero.army):
+                    for m, slot in enumerate(self.current_hero.army):
                         if not slot:
-                            self.current_hero.army[n] = cls_by_type[type](n=n)
+                            self.current_hero.army[m] = cls_by_type[type.name](n=n)
+                            break
                         elif slot.type==type:
                             slot.n+=n
+                            break
                 break
             elif k == 'ENTER': select = curs
-            elif k == '-' and bld and recruited[bld.units.type]:
+            elif k == 'LEFT' and bld and recruited[bld.units.type]:
                 bld.available+=1
                 recruited[bld.units.type]-=1
                 self.player.gold += unit_cost
-            elif k and k in '+=' and bld and bld.available and unit_cost<=gold:
+            elif k == 'RIGHT' and bld and bld.available and unit_cost<=gold:
                 bld.available-=1
                 recruited[bld.units.type]+=1
                 self.player.gold -= unit_cost
@@ -858,21 +855,28 @@ class Hero(Being):
     def real_army(self):
         return list(filter(None, self.army))
 
-class Peasant(Being):
+class ArmyUnit(Being):
+    def _str(self):
+        return str(self), getitem(Blocks.sub, self.n, '+')
+
+class Peasant(ArmyUnit):
     strength = 1
     defence = 1
     cost = 15
     char = Blocks.peasant
     type = Type.peasant
 
-class Pikeman(Being):
+class Pikeman(ArmyUnit):
     strength = 3
     defence = 4
     cost = 25
     char = Blocks.pikeman
     type = Type.pikeman
 
-cls_by_type = {Type.peasant: Peasant}
+cls_by_type = {
+    Type.peasant.name: Peasant,
+    Type.pikeman.name: Pikeman,
+}
 
 class Building(BeingItemTownMixin):
     available = 0
@@ -944,10 +948,20 @@ class Saves:
 
 
 def puts(x, y, text):
-    blt.puts(x, y, text)
+    _puts(x, y, text)
 
 def puts2(x, y, text):
-    blt.puts(x, y+HEIGHT, text)
+    _puts(x, y+HEIGHT, text)
+
+def _puts(x,y,a):
+    if isinstance(a,str):
+        blt.puts(x,y,a)
+    elif a._str:
+        # combined glyps
+        for _s in a._str():
+            blt.puts(x,y,_s)
+    else:
+        blt.puts(x,y,str(a))
 
 def refresh():
     blt.refresh()
@@ -1099,7 +1113,9 @@ def handle_ui():
     puts2(1,0,blt_esc(st))
     for x2 in range(n-1):
         puts2(x+x2*2,0,'|')
+    print("hero.real_army()", hero.real_army())
     for a in hero.real_army():
+        print("a", a, a.n, a._str())
         puts2(x,0,a)
         x+=2
 
@@ -1122,119 +1138,6 @@ def prompt():
         status('> '+mp)
         blt.refresh()
 
-
-def OLDeditor(stdscr, _map):
-    Misc.is_game = 0
-    curses.init_pair(1, curses.COLOR_BLUE, curses.COLOR_WHITE)
-    begin_x = 0; begin_y = 0; width = 80
-    win = newwin(HEIGHT, width, begin_y, begin_x)
-    curses.curs_set(True)
-    loc = Loc(40, 8)
-    brush = None
-    written = 0
-    board_setup()
-    fname = f'maps/{_map}.map'
-    if not os.path.exists(fname):
-        with open(fname, 'w') as fp:
-            for _ in range(HEIGHT):
-                fp.write(Blocks.blank*78 + '\n')
-
-    while 1:
-        k = win.getkey()
-        if k=='Q': return
-        elif k in 'hjklyubnHL':
-            n = 1
-            if k in 'HL':
-                n = 5
-            m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
-
-            for _ in range(n):
-                if brush:
-                    B.B[loc.y][loc.x] = [brush]
-                if chk_oob(loc.mod(*m)):
-                    loc = loc.mod(*m)
-
-        elif k == ' ':
-            brush = None
-        elif k == 'e':
-            brush = ' '
-        elif k == 'r':
-            brush = Blocks.rock
-        elif k == 'd':
-            B.put(Blocks.door, loc)
-        elif k in '0123456789':
-            B.put(k, loc)
-        elif k == 'w':
-            B.put(Blocks.water, loc)
-
-        # NPCs
-        elif k == 'O':
-            B.put(Blocks.soldier, loc)
-
-        elif k == 'T':
-            B.put(choice((Blocks.tree1, Blocks.tree2)), loc)
-        elif k == 'x':
-            B.put(Blocks.rock2, loc)
-            brush = Blocks.rock2
-        elif k == 'C':
-            B.put(Blocks.cactus, loc)
-        elif k == 'v':
-            B.put(Blocks.snowflake, loc)
-        elif k == 'V':
-            B.put(Blocks.snowman, loc)
-
-        elif k == 'o':
-            cmds = 'gm gl gr l b ob f'.split()
-            cmd = ''
-            BL=Blocks
-            while 1:
-                cmd += win.getkey()
-                if cmd == 'b':  B.put(BL.books, loc)
-                elif cmd == 'ob': B.put(BL.open_book, loc)
-                elif cmd == 't':  B.put(BL.tulip, loc)
-                elif cmd == 'f':  B.put(BL.fountain, loc)
-                elif cmd == 'v': B.put(BL.lever, loc)
-                elif cmd == 's': B.put(BL.sharp_rock, loc)
-                elif cmd == 'r': B.put(BL.rock3, loc)
-                elif cmd == 'd': B.put(BL.hexagon, loc)     # drawing
-
-                elif any(c.startswith(cmd) for c in cmds):
-                    continue
-                break
-
-        elif k in 'E':
-            win.addstr(2,2, 'Are you sure you want to clear the map? [Y/N]')
-            y = win.getkey()
-            if y=='Y':
-                for row in B.B:
-                    for cell in row:
-                        cell[:] = [Blocks.blank]
-                B.B[-1][-1].append('_')
-        elif k in 'f':
-            B.put(Blocks.shelves, loc)
-        elif k == 'W':
-            with open(f'maps/{_map}.map', 'w') as fp:
-                for row in B.B:
-                    for cell in row:
-                        fp.write(str(cell[-1]))
-                    fp.write('\n')
-            written=1
-        B.draw()
-        if brush==Blocks.blank:
-            tool = 'eraser'
-        elif brush==Blocks.rock:
-            tool = 'rock'
-        elif not brush:
-            tool = ''
-        else:
-            tool = brush
-        win.addstr(1,73, tool)
-        win.addstr(0, 0 if loc.x>40 else 70,
-                   str(loc))
-        if written:
-            win.addstr(2,65, 'map written')
-            written=0
-        win.move(loc.y, loc.x)
 
 def status(msg):
     puts(0,2,msg)
