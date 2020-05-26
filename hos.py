@@ -325,6 +325,7 @@ class Board:
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
+                print(x,y, _map[y])
                 char = _map[y][x*2 + (0 if y%2==0 else 1)]
                 loc = Loc(x,y)
                 if char != BL.blank:
@@ -397,6 +398,9 @@ class Board:
                 # being's char, so the 'image' of the being remains there, even after being moved away.
                 cell = [c for c in cell if getattr(c,'char',None)!='']
                 a = last(cell)
+                x*=2
+                if y%2==1:
+                    x+=1
                 if isinstance(a, str):
                     puts(x,y,a)
                     continue
@@ -404,9 +408,6 @@ class Board:
                     a = Objects.get_by_id(a)
                 if a.color:
                     a = f'[color={a.color}]{a}[/color]'
-                x*=2
-                if y%2==1:
-                    x+=1
                 if a._str:
                     # combined glyps
                     for _s in a._str():
@@ -533,12 +534,11 @@ class Castle(Item):
     def town_ui(self):
         while 1:
             Boards.b_town_ui.draw()
-            while 1:
-                k = parsekey(blt.read())
-                if k == blt.TK_SHIFT:
-                    continue
-                elif k == 'q':
-                    break
+            k = parsekey(blt.read())
+            if k == blt.TK_SHIFT:
+                continue
+            elif k == 'q':
+                break
 
     def battle_ui(self):
         print('in battle_ui()')
@@ -1141,7 +1141,7 @@ def editor(_map):
         with open(fname, 'w') as fp:
             for n in range(HEIGHT):
                 prefix = '' if n%2==0 else ' '
-                print(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
+                # print(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
                 fp.write(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
     B = Board(None, _map)
     setattr(Boards, 'b_'+_map, B)
