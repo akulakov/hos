@@ -19,9 +19,13 @@ board_grid = []
 
 keymap = dict(
     [
-    [ blt.TK_SHIFT, 'SHIFT' ],
-    [ blt.TK_RETURN, '\n' ],
+    [ blt.TK_RETURN, 'ENTER' ],
     [ blt.TK_PERIOD, "." ],
+    [ blt.TK_SHIFT, 'SHIFT' ],
+    [ blt.TK_UP, "UP" ],
+    [ blt.TK_DOWN, "DOWN" ],
+    [ blt.TK_RIGHT, "RIGHT" ],
+    [ blt.TK_LEFT, "LEFT" ],
 
     [ blt.TK_Q, 'q' ],
     [ blt.TK_W, 'w' ],
@@ -64,6 +68,7 @@ keymap = dict(
     [ blt.TK_COMMA, ',' ],
     [ blt.TK_SPACE, ' ' ],
     [ blt.TK_MINUS, '-' ],
+    [ blt.TK_EQUALS, '=' ],
     [ blt.TK_SLASH, '/' ],
     ]
     )
@@ -154,6 +159,7 @@ class Type:
     blocking = 3
     gate = 4
     castle = 5
+    peasant = 6
 
 class Blocks:
     """All game tiles."""
@@ -179,6 +185,7 @@ class Blocks:
     statue = 'Ộ'
     hexagon = '⎔'
     soldier = '⍾'
+    peasant = '⍡'
     hero1 = noto_tiles['man']
     gold = '☉'
     rubbish = '⛁'
@@ -204,6 +211,7 @@ class Blocks:
            sub_8,
            sub_9,
           ]
+    list_select = '▶'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -534,11 +542,35 @@ class Castle(Item):
     def town_ui(self):
         while 1:
             Boards.b_town_ui.draw()
-            k = parsekey(blt.read())
-            if k == blt.TK_SHIFT:
-                continue
-            elif k == 'q':
+            k = get_and_parse_key()
+            if k == 'q':
                 break
+
+    def recruit_ui(self):
+        recruited = defaultdict(int)
+        curs, select = (0, 0)
+        while 1:
+            B = Boards.b_town_ui
+            B.draw()
+            lst = [('', 'Building', 'Available', 'Recruited')]
+            B.buildings[0].selected = 1
+            for n, b in enumerate(B.buildings):
+                x = Blocks.select if n==select else ''
+                x = Blocks.cursor if n==curs else ''
+                lst.append(x, b.name, b.available, recruited[b.unit.type])
+
+            k = get_and_parse_key()
+            if k == 'q':
+                break
+            elif k == 'DOWN': curs+=1
+            elif k == 'UP': curs-=1
+            elif k == 'ENTER': select = curs
+            elif k == '-':
+                pass
+            if curs<0:
+                curs = len(B.buildings)
+            if curs>len(B.buildings):
+                curs = 0
 
     def battle_ui(self):
         print('in battle_ui()')
@@ -602,12 +634,12 @@ class Being(BeingItemTownMixin):
 
             if yesno:
                 # TODO in some one-time dialogs, may need to detect 'no' explicitly
-                k = parsekey(blt.read())
+                k = get_and_parse_key()
                 return k in 'Yy'
 
             elif multichoice:
                 for _ in range(2):
-                    k = parsekey(blt.read())
+                    k = get_and_parse_key()
                     try:
                         k=int(k)
                     except ValueError:
@@ -620,7 +652,7 @@ class Being(BeingItemTownMixin):
                 puts(0,1, '> ')
                 refresh()
                 for _ in range(10):
-                    k = parsekey(blt.read())
+                    k = get_and_parse_key()
                     if k==' ': break
                     i+=k
                     puts(0,1, '> '+i)
@@ -630,7 +662,7 @@ class Being(BeingItemTownMixin):
             refresh()
             k=None
             while k!=' ':
-                k = parsekey(blt.read())
+                k = get_and_parse_key()
             self.B.draw()
 
 
@@ -777,6 +809,8 @@ class Peasant(Being):
     strength = 1
     defence = 1
     cost = 15
+    char = Blocks.peasant
+    type = Type.peasant
 
 class Building(BeingItemTownMixin):
     available = 0
@@ -846,17 +880,20 @@ def puts2(x, y, text):
 def refresh():
     blt.refresh()
 
+def get_and_parse_key():
+    while 1:
+        k = parsekey(blt.read())
+        if k!='SHIFT':
+            return k
+
 def parsekey(k):
-    if k==blt.TK_SHIFT:
-        return k
-    if k and blt.check(blt.TK_WCHAR) or k==blt.TK_RETURN:
+    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT):
         k = keymap.get(k)
         if k and blt.state(blt.TK_SHIFT):
             k = k.upper()
-            if k=='-':
-                k = '_'
-            if k=='/':
-                k = '?'
+            if k=='-': k = '_'
+            if k=='/': k = '?'
+            if k=='=': k = '+'
         return k
 
 def board_setup():
@@ -894,9 +931,7 @@ def main(load_game):
         ok=handle_ui()
 
 def handle_ui():
-    k = parsekey(blt.read())
-    if k == blt.TK_SHIFT:
-        return 1
+    k = get_and_parse_key()
     puts(0,1, ' '*78)
     hero = Misc.hero
     if k=='q':
@@ -940,8 +975,8 @@ def handle_ui():
     elif k == ' ':
         hero.action()
     elif k == '5' and DBG:
-        k = parsekey(blt.read())
-        k2 = parsekey(blt.read())
+        k = get_and_parse_key()
+        k2 = get_and_parse_key()
         if k and k2:
             try:
                 print(B.B[int(k+k2)])
@@ -953,7 +988,7 @@ def handle_ui():
         # debug teleport
         mp = ''
         while 1:
-            k = parsekey(blt.read())
+            k = get_and_parse_key()
             if not k: break
             mp+=k
             status(mp)
@@ -992,9 +1027,9 @@ def prompt():
     status('> ')
     blt.refresh()
     while 1:
-        k = parsekey(blt.read())
+        k = get_and_parse_key()
         if not k: continue
-        if k=='\n':
+        if k=='ENTER':
             return mp
         mp += k
         status('> '+mp)
@@ -1149,9 +1184,7 @@ def editor(_map):
     B.draw()
 
     while 1:
-        k = parsekey(blt.read())
-        if k == blt.TK_SHIFT:
-            continue
+        k = get_and_parse_key()
         if k=='Q': break
         # elif k and k in 'hjklyubnHL':
         elif k and k in 'hlyubnHL':
@@ -1245,7 +1278,7 @@ def editor(_map):
             cmd = ''
             BL=Blocks
             while 1:
-                k = parsekey(blt.read())
+                k = get_and_parse_key()
                 if k:
                     cmd += k
                 if cmd == 'l':  B.put(BL.locker, loc)
@@ -1269,7 +1302,7 @@ def editor(_map):
 
         elif k == 'E':
             puts(2,2, 'Are you sure you want to clear the map? [Y/N]')
-            y = parsekey(blt.read())
+            y = get_and_parse_key()
             if y=='Y':
                 for row in B.B:
                     for cell in row:
