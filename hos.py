@@ -154,13 +154,15 @@ class Player:
     def __repr__(self):
         return f'<P: {self.name}>'
 
-class Type:
-    door1 = 1
-    container = 2
-    blocking = 3
-    gate = 4
-    castle = 5
-    peasant = 6
+from enum import Enum, auto
+class Type(Enum):
+    door1 = auto()
+    container = auto()
+    blocking = auto()
+    gate = auto()
+    castle = auto()
+    peasant = auto()
+    pikeman = auto()
 
 class Blocks:
     """All game tiles."""
@@ -187,11 +189,13 @@ class Blocks:
     hexagon = '⎔'
     soldier = '⍾'
     peasant = '⍡'
+    pikeman = '⌅'
     hero1 = noto_tiles['man']
     gold = '☉'
     rubbish = '⛁'
     cursor = '𐌏'
     hut = '△'
+    barracks = '⌂'
     sub_1 = '₁'
     sub_2 = '₂'
     sub_3 = '₃'
@@ -369,6 +373,11 @@ class Board:
                         self.put(h)
                         self.buildings.append(h)
 
+                    elif char==Blocks.barracks:
+                        a=Barracks(loc, self._map)
+                        self.put(a)
+                        self.buildings.append(a)
+
                     elif char==Blocks.fountain:
                         Item(Blocks.fountain, 'water fountain basin', loc, self._map)
 
@@ -541,7 +550,8 @@ class Castle(Item):
     def __repr__(self):
         return f'<C: {self.name}>'
 
-    def town_ui(self):
+    def town_ui(self, hero):
+        self.current_hero = hero
         while 1:
             Boards.b_town_ui.draw()
             k = get_and_parse_key()
@@ -590,6 +600,7 @@ class Castle(Item):
                             self.current_hero.army[n] = cls_by_type[type](n=n)
                         elif slot.type==type:
                             slot.n+=n
+                break
             elif k == 'ENTER': select = curs
             elif k == '-' and bld and recruited[bld.units.type]:
                 bld.available+=1
@@ -729,7 +740,7 @@ class Being(BeingItemTownMixin):
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
             if cas.player == self.player:
-                cas.town_ui()
+                cas.town_ui(self)
             else:
                 cas.battle_ui()
             return None, None
@@ -847,10 +858,19 @@ class Peasant(Being):
     char = Blocks.peasant
     type = Type.peasant
 
+class Pikeman(Being):
+    strength = 3
+    defence = 4
+    cost = 25
+    char = Blocks.pikeman
+    type = Type.pikeman
+
 cls_by_type = {Type.peasant: Peasant}
 
 class Building(BeingItemTownMixin):
     available = 0
+    _name = None
+
     def __init__(self, loc=None, board_map=None):
         self.loc, self.board_map = loc, board_map
         # if board_map:
@@ -859,6 +879,10 @@ class Building(BeingItemTownMixin):
     def __repr__(self):
         char = super().__repr__()
         return f'<H: {self.name} ({self.player})>'
+
+    @property
+    def name(self):
+        return self._name or self.__class__.__name__
 
     def _str(self):
         return str(self), getitem(Blocks.sub, self.available, '+')
@@ -871,22 +895,11 @@ class Hut(Building):
     units = Peasant
     char = Blocks.hut
     available = 5
-    _name = None
 
-    @property
-    def name(self):
-        return self._name or self.__class__.__name__
-
-class Hut2(Building):
-    units = Peasant
-    char = Blocks.hut
-    available = 5
-    _name = None
-
-    @property
-    def name(self):
-        return self._name or self.__class__.__name__
-
+class Barracks(Building):
+    units = Pikeman
+    char = Blocks.barracks
+    available = 3
 
 class Saves:
     saves = {}
@@ -1335,7 +1348,7 @@ def editor(_map):
                 if k:
                     cmd += k
                 if cmd == 'l':  B.put(BL.locker, loc)
-                elif cmd == 'b':  B.put(BL.books, loc)
+                elif cmd == 'B':  B.put(BL.books, loc)
                 elif cmd == 'ob': B.put(BL.open_book, loc)
                 elif cmd == 't':  B.put('t', loc)
                 elif cmd == 'f':  B.put(BL.fountain, loc)
@@ -1348,6 +1361,7 @@ def editor(_map):
                 elif cmd == 'd': B.put('d', loc)     # drawing
                 elif cmd == 'R': B.put(Blocks.rabbit, loc)
                 elif cmd == 'h': B.put(Blocks.hut, loc)
+                elif cmd == 'b': B.put(Blocks.barracks, loc)
 
                 elif any(c.startswith(cmd) for c in cmds):
                     continue
