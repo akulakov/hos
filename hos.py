@@ -19,6 +19,7 @@ board_grid = []
 
 keymap = dict(
     [
+    [ blt.TK_ESCAPE, 'ESCAPE' ],
     [ blt.TK_RETURN, 'ENTER' ],
     [ blt.TK_PERIOD, "." ],
     [ blt.TK_SHIFT, 'SHIFT' ],
@@ -145,7 +146,7 @@ class ObjectsClass:
 Objects = ObjectsClass()
 
 class Player:
-    gold = 20
+    gold = 250
 
     def __init__(self, name, is_ai):
         self.name, self.is_ai = name, is_ai
@@ -528,8 +529,10 @@ class Item(BeingItemTownMixin):
             self.loc = new
             self.B.put(self)
 
+
 class Castle(Item):
     weekly_income = 250
+    current_hero = None
 
     def __init__(self, *args, player=None, **kwargs):
         self.player = player
@@ -543,39 +546,72 @@ class Castle(Item):
         while 1:
             Boards.b_town_ui.draw()
             k = get_and_parse_key()
-            if k == 'q':
+            if k in ('q', 'ESCAPE'):
                 break
+            elif k=='r':
+                self.recruit_ui()
 
     def recruit_ui(self):
         recruited = defaultdict(int)
         curs, select = (0, 0)
+        # empty_slots = [n for n, s in enumerate(self.current_hero.army) if not s]
+        B = Boards.b_town_ui
+        B.draw()
+        refresh()
         while 1:
-            B = Boards.b_town_ui
-            B.draw()
             lst = [('', 'Building', 'Available', 'Recruited')]
             B.buildings[0].selected = 1
             for n, b in enumerate(B.buildings):
-                x = Blocks.select if n==select else ''
+                x = Blocks.list_select if n==select else ''
                 x = Blocks.cursor if n==curs else ''
-                lst.append(x, b.name, b.available, recruited[b.unit.type])
+                lst.append((x, b.name, b.available, recruited[b.units.type]))
+            lst.append(('', '', '', 'ACCEPT'))
+            blt.clear_area(5,5,60, len(B.buildings)+5)
+            for n, (a,b,c,d) in enumerate(lst):
+                puts(6, 6+n, a)
+                puts(9, 6+n, b)
+                puts(9+15, 6+n, str(c))
+                puts(9+15+12, 6+n, str(d))
+            refresh()
 
             k = get_and_parse_key()
-            if k == 'q':
+            bld = getitem(B.buildings, curs)
+            gold = self.player.gold
+            unit_cost = bld.units.cost
+            if k in ('q', 'ESCAPE'):
                 break
             elif k == 'DOWN': curs+=1
             elif k == 'UP': curs-=1
+            elif not bld and k=='ENTER':
+                self.player.gold = gold
+                # Hope there's enough empty slots!
+                for type, n in recruited.items():
+                    for n, slot in enumerate(self.current_hero.army):
+                        if not slot:
+                            self.current_hero.army[n] = cls_by_type[type](n=n)
+                        elif slot.type==type:
+                            slot.n+=n
             elif k == 'ENTER': select = curs
-            elif k == '-':
-                pass
+            elif k == '-' and bld and recruited[bld.units.type]:
+                bld.available+=1
+                recruited[bld.units.type]-=1
+                self.player.gold += unit_cost
+            elif k == '+' and bld and bld.available and unit_cost<=gold:
+                bld.available-=1
+                recruited[bld.units.type]+=1
+                self.player.gold -= unit_cost
+
             if curs<0:
                 curs = len(B.buildings)
             if curs>len(B.buildings):
                 curs = 0
 
-    def battle_ui(self):
-        print('in battle_ui()')
-        pass
+class BattleUI:
+    def __init__(self, B):
+        self.B=B
 
+    def go(self):
+        pass
 
 
 class Being(BeingItemTownMixin):
@@ -812,6 +848,8 @@ class Peasant(Being):
     char = Blocks.peasant
     type = Type.peasant
 
+cls_by_type = {Type.peasant: Peasant}
+
 class Building(BeingItemTownMixin):
     available = 0
     def __init__(self, loc=None, board_map=None):
@@ -834,6 +872,11 @@ class Hut(Building):
     units = Peasant
     char = Blocks.hut
     available = 5
+    _name = None
+
+    @property
+    def name(self):
+        return self._name or self.__class__.__name__
 
 
 class Saves:
@@ -887,7 +930,7 @@ def get_and_parse_key():
             return k
 
 def parsekey(k):
-    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT):
+    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT, blt.TK_ESCAPE):
         k = keymap.get(k)
         if k and blt.state(blt.TK_SHIFT):
             k = k.upper()
