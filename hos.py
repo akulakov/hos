@@ -334,7 +334,6 @@ class Board:
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
-                print(x,y, _map[y])
                 char = _map[y][x*2 + (0 if y%2==0 else 1)]
                 loc = Loc(x,y)
                 if char != BL.blank:
@@ -553,19 +552,19 @@ class Castle(Item):
 
     def recruit_ui(self):
         recruited = defaultdict(int)
-        curs, select = (0, 0)
+        curs = 0
         # empty_slots = [n for n, s in enumerate(self.current_hero.army) if not s]
         B = Boards.b_town_ui
         B.draw()
         refresh()
         while 1:
             lst = [('', 'Building', 'Available', 'Recruited')]
-            B.buildings[0].selected = 1
             for n, b in enumerate(B.buildings):
-                x = Blocks.list_select if n==select else ''
                 x = Blocks.cursor if n==curs else ''
                 lst.append((x, b.name, b.available, recruited[b.units.type]))
-            lst.append(('', '', '', 'ACCEPT'))
+
+            x = Blocks.cursor if curs==len(B.buildings) else ''
+            lst.append((x, 'ACCEPT', '', ''))
             blt.clear_area(5,5,60, len(B.buildings)+5)
             for n, (a,b,c,d) in enumerate(lst):
                 puts(6, 6+n, a)
@@ -577,7 +576,7 @@ class Castle(Item):
             k = get_and_parse_key()
             bld = getitem(B.buildings, curs)
             gold = self.player.gold
-            unit_cost = bld.units.cost
+            unit_cost = bld.units.cost if bld else 0
             if k in ('q', 'ESCAPE'):
                 break
             elif k == 'DOWN': curs+=1
@@ -596,7 +595,7 @@ class Castle(Item):
                 bld.available+=1
                 recruited[bld.units.type]-=1
                 self.player.gold += unit_cost
-            elif k == '+' and bld and bld.available and unit_cost<=gold:
+            elif k and k in '+=' and bld and bld.available and unit_cost<=gold:
                 bld.available-=1
                 recruited[bld.units.type]+=1
                 self.player.gold -= unit_cost
@@ -878,6 +877,16 @@ class Hut(Building):
     def name(self):
         return self._name or self.__class__.__name__
 
+class Hut2(Building):
+    units = Peasant
+    char = Blocks.hut
+    available = 5
+    _name = None
+
+    @property
+    def name(self):
+        return self._name or self.__class__.__name__
+
 
 class Saves:
     saves = {}
@@ -930,7 +939,8 @@ def get_and_parse_key():
             return k
 
 def parsekey(k):
-    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT, blt.TK_ESCAPE):
+    b=blt
+    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN,blt.TK_SHIFT,blt.TK_ESCAPE,blt.TK_UP,blt.TK_DOWN,b.TK_RIGHT,b.TK_LEFT):
         k = keymap.get(k)
         if k and blt.state(blt.TK_SHIFT):
             k = k.upper()
