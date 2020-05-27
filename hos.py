@@ -728,7 +728,9 @@ class BattleUI:
             for h, u in [(a,u) for u in a.real_army()] + [(b,u) for u in b.real_army()]:
                 while 1:
                     if h.player:
+                        u.color = 'blue'
                         ok = handle_ui(u)
+                        u.color = None
                         if not ok:
                             return
                         if ok==END_MOVE:
@@ -736,6 +738,9 @@ class BattleUI:
                             break
                     else:
                         u.attack(hh.army[0])
+                        B.draw()
+                        if u.cur_move==0:
+                            break
                     if a.army_is_dead():
                         hh.talk(hh, f'{b} wins!')
                         return
@@ -773,7 +778,8 @@ class Being(BeingItemTownMixin):
         """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
         if isinstance(dialog, int):
             dialog = conversations.get(dialog)
-        being = objects.get(being) or being
+        if isinstance(being, int):
+            being = Objects.get(being)
         loc = being.loc
         if isinstance(dialog, str):
             dialog = [dialog]
@@ -919,6 +925,7 @@ class Being(BeingItemTownMixin):
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
                     BattleUI(self.B).go(self, obj)
+                    Misc.B = self.B
                 else:
                     self.hit(obj)
 
@@ -933,11 +940,15 @@ class Being(BeingItemTownMixin):
     def hit(self, obj):
         B=self.B
         a = self.strength * self.n
+        print("a", a)
         b = obj.health * obj.n
+        print("b", b)
         c = b - a
+        print("c", c)
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
             status(f'{obj} dies')
+            obj.n = obj.health = 0
         else:
             obj.n, obj.health = divmod(c, obj.max_health)
 
@@ -1091,7 +1102,7 @@ class Saves:
         boards[:] = s['boards']
         Objects = s['objects']
         done_events = s['done_events']
-        player = objects[ID.player]
+        player = Objects[ID.player]
         loc = player.loc
         bl = s['cur_brd']
         B = boards[bl.y][bl.x]
@@ -1103,7 +1114,7 @@ class Saves:
         s = {}
         s['boards'] = boards
         s['cur_brd'] = cur_brd
-        s['objects'] = objects
+        s['objects'] = Objects
         s['done_events'] = done_events
         player = obj_by_attr.player
         bl = cur_brd
@@ -1276,7 +1287,7 @@ def handle_ui(unit):
     elif k == 'i':
         txt = []
         for id, n in Misc.hero.inv.items():
-            item = objects[id]
+            item = Objects[id]
             if item and n:
                 txt.append(f'{item.name} {n}')
         Misc.B.display(txt)
