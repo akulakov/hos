@@ -243,7 +243,7 @@ def last(x):
     return x[-1] if x else None
 
 def chk_oob(loc, y=0, x=0):
-    return 0 <= loc.y+y <= HEIGHT-1 and 0 <= loc.x+x <= 78
+    return 0 <= loc.y+y <= HEIGHT-1 and 0 <= loc.x+x <= WIDTH-1
 
 def chk_b_oob(loc, y=0, x=0):
     h = len(board_grid)
@@ -553,6 +553,7 @@ class Castle(Item):
         self.current_hero = hero
         while 1:
             Boards.b_town_ui.draw()
+            stats()
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
                 break
@@ -566,6 +567,7 @@ class Castle(Item):
         B = Boards.b_town_ui
         B.draw()
         refresh()
+        stats()
         while 1:
             lst = [('', 'Building', 'Available', 'Recruited')]
             for n, b in enumerate(B.buildings):
@@ -986,10 +988,11 @@ def parsekey(k):
 def board_setup():
     Boards.b_town_ui = Board(Loc(0,0), 'town_ui')
     Boards.b_town_ui.load_map('town_ui')
-    Boards.b_1 = Board(Loc(0,1), '1')
+    Boards.b_1 = Board(Loc(0,2), '1')
     Boards.b_1.board_1()
     board_grid[:] = [
         ['town_ui'],
+        [None],
         ['1'],
     ]
     Misc.B = Boards.b_1
@@ -1044,8 +1047,8 @@ def handle_ui():
 
             # ugly but....
             p_loc = Loc(x, y)
-            if chk_b_oob(loc):
-                Misc.B = hero.move_to_board(boards[loc.y][loc.x]._map, loc=p_loc)
+            if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
+                Misc.B = hero.move_to_board(board_grid[loc.y][loc.x]._map, loc=p_loc)
 
     elif k == '.':
         pass
@@ -1105,22 +1108,24 @@ def handle_ui():
         Misc.B.display(txt)
 
     Misc.B.draw()
-    player = Misc.player
-    n = len(hero.real_army())
+    stats()
+    return 1
 
-    st = f'[Gold:{Misc.player.gold}][Wood:{Misc.player.wood}][Rock:{Misc.player.rock}][Mercury:{Misc.player.mercury}][Sulphur:{Misc.player.sulphur}]'
+def stats():
+    pl = Misc.player
+    h = Misc.hero
+    n = len(h.real_army())
+    st = f'[Gold:{pl.gold}][Wood:{pl.wood}][Rock:{pl.rock}][Mercury:{pl.mercury}][Sulphur:{pl.sulphur}] |'
     x = len(st)+2
     puts2(1,0,blt_esc(st))
+    puts2(x,0, h.name)
+    x+= len(h.name) + 2
     for x2 in range(n-1):
-        puts2(x+x2*2,0,'|')
-    print("hero.real_army()", hero.real_army())
-    for a in hero.real_army():
-        print("a", a, a.n, a._str())
+        puts2(x+x2*3,0,'|')
+    for a in h.real_army():
         puts2(x,0,a)
-        x+=2
-
+        x+=3
     refresh()
-    return 1
 
 def blt_esc(txt):
     return txt.replace('[','[[').replace(']',']]')
