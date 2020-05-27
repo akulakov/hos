@@ -559,9 +559,76 @@ class Castle(Item):
                 break
             elif k=='r':
                 self.recruit_ui()
+            elif k=='t':
+                self.troops_ui()
 
     def troops_ui(self):
-        pass
+        army_size = 6
+        i = 0
+        Boards.b_town_ui.draw()
+
+        while 1:
+            stats(self)
+            blt.clear_area(5,5,60,10)
+            h = self.current_hero
+
+            puts(9 + i*3, 6, Blocks.cursor)
+
+            x = y = 8
+            for a in self.army:
+                puts(x+1 if a else x,
+                      y,
+                      a or blt_esc('[ ]')
+                     )
+                x+=3
+            y+=2
+
+            x = 8
+            for a in h.army:
+                puts(x+1 if a else x,
+                      y,
+                      a or blt_esc('[ ]'))
+                x+=3
+            refresh()
+            k = get_and_parse_key()
+            if k in ('q', 'ESCAPE'):
+                break
+            elif k == 'DOWN' and self.army[i]:
+                if blt.state(blt.TK_SHIFT):
+                    self.army = self.merge_into_army(self.army, h.army)
+                else:
+                    self.army[i] = self.merge_into_army([self.army[i]], h.army)
+            elif k == 'UP' and h.army[i]:
+                if blt.state(blt.TK_SHIFT):
+                    h.army = self.merge_into_army(h.army, self.army)
+                else:
+                    h.army[i] = self.merge_into_army([h.army[i]], self.army)
+
+            elif k == 'LEFT':
+                i-=1
+                if i<0: i = 5
+            elif k == 'RIGHT':
+                i+=1
+                if i>5: i = 0
+
+    def merge_into_army(self, A, B):
+        """Merge army x into y."""
+        remains = []
+        for a in filter(None, A):
+            same_type = first([b for b in B if b and b.type==a.type])
+            empty = first([n for n, b in enumerate(B) if not b])
+            if same_type:
+                same_type.n+= a.n
+            elif empty is not None:
+                B[empty] = a
+            else:
+                remains.append(a)
+
+        if len(A)==1:
+            return first(remains)
+        else:
+            return remains + [None]*(6-len(remains))
+
 
     def recruit_ui(self):
         recruited = defaultdict(int)
@@ -575,14 +642,14 @@ class Castle(Item):
             lst = [('', 'Unit', 'Available', 'Recruited')]
             for n, b in enumerate(B.buildings):
                 x = Blocks.cursor if n==curs else ''
-                lst.append((x, b.units.name, b.available, recruited[b.units.type]))
+                lst.append((x, b.units.__name__, b.available, recruited[b.units.type]))
 
             x = Blocks.cursor if curs==len(B.buildings) else ''
             lst.append((x, 'ACCEPT', '', ''))
             blt.clear_area(5,5,60, len(B.buildings)+5)
             for n, (a,b,c,d) in enumerate(lst):
                 puts(6, 6+n, a)
-                puts(9, 6+n, b)
+                puts(9, 6+n, str(b))
                 puts(9+15, 6+n, str(c))
                 puts(9+15+12, 6+n, str(d))
             refresh()
@@ -639,7 +706,7 @@ class Being(BeingItemTownMixin):
     char = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?', color=None):
-        self.id, self.loc, self.board_map, self.name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
+        self.id, self.loc, self.board_map, self._name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
         self.char = self.char or char
         self.inv = defaultdict(int)
         if id:
@@ -649,6 +716,10 @@ class Being(BeingItemTownMixin):
 
     def __str__(self):
         return super().__str__() if self.health>0 else Blocks.rubbish
+
+    @property
+    def name(self):
+        return self._name or self.__class__.__name__
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
@@ -865,10 +936,6 @@ class ArmyUnit(Being):
 
     def _str(self):
         return str(self), getitem(Blocks.sub, self.n, '+')
-
-    @property
-    def name(self):
-        return self._name or self.__class__.__name__
 
 class Peasant(ArmyUnit):
     strength = 1
