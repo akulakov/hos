@@ -8,6 +8,7 @@ from textwrap import wrap
 import string
 # import shelve
 from copy import copy  #, deepcopy
+from enum import Enum, auto
 
 HEIGHT = 16
 WIDTH = 38
@@ -158,7 +159,6 @@ class Player:
     def __repr__(self):
         return f'<P: {self.name}>'
 
-from enum import Enum, auto
 class Type(Enum):
     door1 = auto()
     container = auto()
@@ -192,8 +192,8 @@ class Blocks:
     statue = 'Ộ'
     hexagon = '⎔'
     soldier = '⍾'
-    peasant = '⍡'
-    pikeman = '⌅'
+    peasant = '\u23f2'
+    pikeman = '\u23f3'
     hero1 = noto_tiles['man']
     gold = '☉'
     rubbish = '⛁'
@@ -434,7 +434,6 @@ class Board:
         for y,x,txt in self.labels:
             puts(x,y,txt)
         refresh()
-        puts2(74,0, str(self._map))
 
     def put(self, obj, loc=None):
         """
@@ -542,6 +541,7 @@ class Castle(Item):
     current_hero = None
 
     def __init__(self, *args, player=None, **kwargs):
+        self.army = [None] * 6
         self.player = player
         super().__init__(Blocks.door, *args, **kwargs)
         self.type = Type.castle
@@ -553,12 +553,15 @@ class Castle(Item):
         self.current_hero = hero
         while 1:
             Boards.b_town_ui.draw()
-            stats()
+            stats(self)
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
                 break
             elif k=='r':
                 self.recruit_ui()
+
+    def troops_ui(self):
+        pass
 
     def recruit_ui(self):
         recruited = defaultdict(int)
@@ -567,12 +570,12 @@ class Castle(Item):
         B = Boards.b_town_ui
         B.draw()
         refresh()
-        stats()
+        stats(self)
         while 1:
-            lst = [('', 'Building', 'Available', 'Recruited')]
+            lst = [('', 'Unit', 'Available', 'Recruited')]
             for n, b in enumerate(B.buildings):
                 x = Blocks.cursor if n==curs else ''
-                lst.append((x, b.name, b.available, recruited[b.units.type]))
+                lst.append((x, b.units.name, b.available, recruited[b.units.type]))
 
             x = Blocks.cursor if curs==len(B.buildings) else ''
             lst.append((x, 'ACCEPT', '', ''))
@@ -596,9 +599,9 @@ class Castle(Item):
                 self.player.gold = gold
                 # Hope there's enough empty slots!
                 for type, n in recruited.items():
-                    for m, slot in enumerate(self.current_hero.army):
+                    for m, slot in enumerate(self.army):
                         if not slot:
-                            self.current_hero.army[m] = cls_by_type[type.name](n=n)
+                            self.army[m] = cls_by_type[type.name](n=n)
                             break
                         elif slot.type==type:
                             slot.n+=n
@@ -858,8 +861,14 @@ class Hero(Being):
         return list(filter(None, self.army))
 
 class ArmyUnit(Being):
+    _name = None
+
     def _str(self):
         return str(self), getitem(Blocks.sub, self.n, '+')
+
+    @property
+    def name(self):
+        return self._name or self.__class__.__name__
 
 class Peasant(ArmyUnit):
     strength = 1
@@ -1111,7 +1120,7 @@ def handle_ui():
     stats()
     return 1
 
-def stats():
+def stats(castle=None):
     pl = Misc.player
     h = Misc.hero
     n = len(h.real_army())
@@ -1120,10 +1129,24 @@ def stats():
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
     x+= len(h.name) + 2
-    for x2 in range(n-1):
-        puts2(x+x2*3,0,'|')
-    for a in h.real_army():
-        puts2(x,0,a)
+    # for x2 in range(n-1): puts2(x+x2*4,0,'|')
+    y = 1
+    if castle:
+        x = 1
+        for a in castle.army:
+            puts2(x+1 if a else x,
+                  y,
+                  a or blt_esc('[ ]')
+                 )
+            # if a: x+=1
+            x+=3
+        y+=1
+
+    x = 1
+    for a in h.army:
+        puts2(x+1 if a else x,
+              y,
+              a or blt_esc('[ ]'))
         x+=3
     refresh()
 
