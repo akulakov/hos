@@ -269,23 +269,23 @@ class Loc:
         if isinstance(l, Loc):
             return (self.x, self.y) == (l.x, l.y)
 
-    def mod(self, y=0, x=0):
+    def mod(self, x=0, y=0):
         new = copy(self)
         new.y += y
         new.x += x
         return new
 
-    def mod_r(self):
-        return self.mod(0, 1)
+    def mod_r(self, n=1):
+        return self.mod(n, 0)
 
-    def mod_l(self):
-        return self.mod(0, -1)
+    def mod_l(self, n=1):
+        return self.mod(-n, 0)
 
-    def mod_d(self):
-        return self.mod(1, 0)
+    def mod_d(self, n=1):
+        return self.mod(0, n)
 
-    def mod_u(self):
-        return self.mod(-1, 0)
+    def mod_u(self, n=1):
+        return self.mod(0, -n)
 
 
 class Board:
@@ -408,6 +408,7 @@ class Board:
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
         Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player)
         c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
+        IndependentArmy(Loc(8,10), '1', army=[Peasant(n=5)])
 
     def draw(self):
         blt.clear()
@@ -530,7 +531,7 @@ class Item(BeingItemTownMixin):
     def move(self, dir, n=1):
         m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0))[dir]
         for _ in range(n):
-            new = self.loc.mod(*m)
+            new = self.loc.mod(m[1],m[0])
             self.B.remove(self)
             self.loc = new
             self.B.put(self)
@@ -693,8 +694,22 @@ class BattleUI:
     def __init__(self, B):
         self.B=B
 
-    def go(self):
-        pass
+    def go(self, a, b):
+        B = Boards.b_battle
+        loc = B.specials[1]
+        for u in a.real_army():
+            B.put(u, loc)
+            loc = loc.mod_d(2)
+        loc = B.specials[2]
+        for u in b.real_army():
+            B.put(u, loc)
+            loc = loc.mod_d(2)
+
+        while 1:
+            B.draw()
+            k = get_and_parse_key()
+            if k in ('q', 'ESCAPE'):
+                break
 
 
 class Being(BeingItemTownMixin):
@@ -798,10 +813,10 @@ class Being(BeingItemTownMixin):
             mx=0
         m = my,mx
         if chk_oob(self.loc, *m):
-            return True, self.loc.mod(*m)
+            return True, self.loc.mod(m[1],m[0])
         else:
             if chk_b_oob(self.B.loc, *m):
-                return LOAD_BOARD, self.B.loc.mod(*m)
+                return LOAD_BOARD, self.B.loc.mod(m[1],m[0])
         return 0, 0
 
     def move(self, dir):
@@ -863,7 +878,7 @@ class Being(BeingItemTownMixin):
     def attack(self, obj):
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
-                self.battle_ui(obj)
+                BattleUI(self.B).go(self, obj)
 
     def hit(self, obj):
         B=self.B
@@ -919,17 +934,29 @@ class Being(BeingItemTownMixin):
         return not self.alive
 
 
+def pad_none(lst, size):
+    return lst + [None]*(size-len(lst))
+
 class Hero(Being):
     army = [None] * 6
-    def __init__(self, *args, player=None ,**kwargs ):
+    def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
+        if army:
+            self.army = pad_none(army, 6)
+
+    def __str__(self):
+        if not self.player:
+            # Independent army
+            return self.army[0].char
+        return super().__str__()
 
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
     def real_army(self):
         return list(filter(None, self.army))
+IndependentArmy = Hero
 
 class ArmyUnit(Being):
     _name = None
@@ -1064,11 +1091,14 @@ def parsekey(k):
 def board_setup():
     Boards.b_town_ui = Board(Loc(0,0), 'town_ui')
     Boards.b_town_ui.load_map('town_ui')
+    Boards.b_battle = Board(Loc(2,0), 'battle')
+    Boards.b_battle.load_map('battle')
+
     Boards.b_1 = Board(Loc(0,2), '1')
     Boards.b_1.board_1()
     board_grid[:] = [
-        ['town_ui'],
-        [None],
+        ['town_ui', 0, 'battle'],
+        [0,0,0],
         ['1'],
     ]
     Misc.B = Boards.b_1
@@ -1287,8 +1317,8 @@ def editor(_map):
             for _ in range(n):
                 if brush:
                     B.B[loc.y][loc.x] = [brush]
-                if chk_oob(loc.mod(my,mx)):
-                    loc = loc.mod(my,mx)
+                if chk_oob(loc.mod(mx,my)):
+                    loc = loc.mod(mx,my)
 
         elif k == ' ':
             brush = None
