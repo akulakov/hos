@@ -560,6 +560,8 @@ class Castle(Item):
                 break
             elif k=='r':
                 self.recruit_ui()
+            elif k=='R':
+                self.recruit_all()
             elif k=='t':
                 self.troops_ui()
 
@@ -613,7 +615,7 @@ class Castle(Item):
                 if i>5: i = 0
 
     def merge_into_army(self, A, B):
-        """Merge army x into y."""
+        """Merge army A into B."""
         remains = []
         for a in filter(None, A):
             same_type = first([b for b in B if b and b.type==a.type])
@@ -630,6 +632,18 @@ class Castle(Item):
         else:
             return remains + [None]*(6-len(remains))
 
+
+    def recruit_all(self):
+        hero = self.current_hero
+        for b in Boards.b_town_ui.buildings:
+            recruited = 0
+            for _ in range(b.available):
+                if not b.available or self.player.gold < b.units.cost or not hero.can_merge(b.units.type):
+                    break
+                b.available-=1
+                recruited+=1
+                self.player.gold -= b.units.cost
+            self.merge_into_army([b.units(n=recruited)], hero.army)
 
     def recruit_ui(self):
         recruited = defaultdict(int)
@@ -707,10 +721,10 @@ class BattleUI:
 
         while 1:
             B.draw()
-            k = get_and_parse_key()
-            if k in ('q', 'ESCAPE'):
-                break
-
+            for u in a.real_army() + b.real_army():
+                ok=1
+                while ok:
+                    ok = handle_ui(u)
 
 class Being(BeingItemTownMixin):
     n = None
@@ -938,12 +952,13 @@ def pad_none(lst, size):
     return lst + [None]*(size-len(lst))
 
 class Hero(Being):
-    army = [None] * 6
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
         if army:
             self.army = pad_none(army, 6)
+        else:
+            self.army = [None]*6
 
     def __str__(self):
         if not self.player:
@@ -956,6 +971,9 @@ class Hero(Being):
 
     def real_army(self):
         return list(filter(None, self.army))
+
+    def can_merge(self, type):
+        return any(s is None or s.type==type for s in self.army)
 IndependentArmy = Hero
 
 class ArmyUnit(Being):
@@ -1124,9 +1142,9 @@ def main(load_game):
     Misc.hero = Objects.hero1
     Misc.B.draw()
     while ok:
-        ok=handle_ui()
+        ok=handle_ui(Misc.hero)
 
-def handle_ui():
+def handle_ui(unit):
     k = get_and_parse_key()
     puts(0,1, ' '*78)
     hero = Misc.hero
@@ -1137,15 +1155,15 @@ def handle_ui():
         if k in 'HL':
             k = k.lower()
             for _ in range(5):
-                rv = hero.move(k)
+                rv = unit.move(k)
                 if rv[0] == LOAD_BOARD:
                     break
         else:
-            rv = hero.move(k)
+            rv = unit.move(k)
 
         if rv[0] == LOAD_BOARD:
             loc = rv[1]
-            x, y = hero.loc
+            x, y = unit.loc
             if k=='l': x = 0
             if k=='h': x = 37
             if k in 'yu': y = 15
@@ -1154,22 +1172,22 @@ def handle_ui():
             # ugly but....
             p_loc = Loc(x, y)
             if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
-                Misc.B = hero.move_to_board(board_grid[loc.y][loc.x]._map, loc=p_loc)
+                Misc.B = unit.move_to_board(board_grid[loc.y][loc.x]._map, loc=p_loc)
 
     elif k == '.':
         pass
     elif k == 'o':
         name = prompt(win2)
-        hero, B = Saves().load(name)
+        Misc.hero, B = Saves().load(name)
     elif k == 's':
         name = prompt(win2)
         Saves().save(Misc.B.loc, name)
         status(f'Saved game as "{name}"')
         refresh()
     elif k == 'v':
-        status(str(hero.loc))
+        status(str(unit.loc))
     elif k == ' ':
-        hero.action()
+        Misc.hero.action()
     elif k == '5' and DBG:
         k = get_and_parse_key()
         k2 = get_and_parse_key()
@@ -1192,8 +1210,7 @@ def handle_ui():
             if mp.endswith(' '):
                 try:
                     x,y=mp[:-1].split(',')
-                    print(Loc(int(x), int(y)))
-                    player.tele(Loc(int(x), int(y)))
+                    unit.tele(Loc(int(x), int(y)))
                 except Exception as e:
                     print(e)
                 break
@@ -1201,13 +1218,13 @@ def handle_ui():
     # -----------------------------------------------------------------------------------------------
 
     elif k == 'u':
-        hero.use()
+        Misc.hero.use()
 
     elif k == 'E':
-        Misc.B.display(str(Misc.B.get_all(hero.loc)))
+        Misc.B.display(str(Misc.B.get_all(unit.loc)))
     elif k == 'i':
         txt = []
-        for id, n in hero.inv.items():
+        for id, n in Misc.hero.inv.items():
             item = objects[id]
             if item and n:
                 txt.append(f'{item.name} {n}')
