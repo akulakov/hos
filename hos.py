@@ -6,16 +6,17 @@ from random import choice
 from collections import defaultdict
 from textwrap import wrap
 import string
-# import shelve
+import shelve
 from copy import copy  #, deepcopy
 from enum import Enum, auto
 
 HEIGHT = 16
 WIDTH = 38
-debug_log = open('debug', 'w')
 LOAD_BOARD = 999
+END_MOVE=900
 SLP = 0.01
 SEQ_TYPES = (list, tuple)
+debug_log = open('debug', 'w')
 board_grid = []
 
 keymap = dict(
@@ -230,7 +231,7 @@ class ID:
     hero1 = 2
 
 class Misc:
-    pass
+    current_unit = None
 
 def mkcell():
     return [Blocks.blank]
@@ -411,7 +412,7 @@ class Board:
         c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
         IndependentArmy(Loc(8,10), '1', army=[Peasant(n=5)])
 
-    def draw(self):
+    def draw(self, battle=False):
         blt.clear()
         blt.color("white")
         for y, row in enumerate(self.B):
@@ -429,13 +430,11 @@ class Board:
                     continue
                 if isinstance(a, int) and a<500:
                     a = Objects.get_by_id(a)
-                if a.color:
-                    a = f'[color={a.color}]{a}[/color]'
                 puts(x,y,a)
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
-        stats()
+        stats(battle=battle)
         refresh()
 
     def put(self, obj, loc=None):
@@ -725,12 +724,13 @@ class BattleUI:
             loc = loc.mod_d(2)
 
         hh = a if (a.player and not a.player.is_ai) else b
-        B.draw()
+        B.draw(battle=1)
         while 1:
             for h, u in [(a,u) for u in a.real_army()] + [(b,u) for u in b.real_army()]:
+                Misc.current_unit = u   # for stats()
                 while 1:
                     if h.player:
-                        u.color = 'blue'
+                        u.color = 'light blue'
                         ok = handle_ui(u)
                         u.color = None
                         if not ok:
@@ -740,7 +740,7 @@ class BattleUI:
                             break
                     else:
                         u.attack(hh.army[0])
-                        B.draw()
+                        B.draw(battle=1)
                         if u.cur_move==0:
                             break
 
@@ -752,6 +752,7 @@ class BattleUI:
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
                             return
+
 
 class Being(BeingItemTownMixin):
     n = None
@@ -1144,8 +1145,12 @@ def _puts(x,y,a):
     elif a._str:
         # combined glyps
         for _s in a._str():
+            if a.color:
+                _s = f'[color={a.color}]{_s}[/color]'
             blt.puts(x,y,_s)
     else:
+        if a.color:
+            a = f'[color={a.color}]{a}[/color]'
         blt.puts(x,y,str(a))
 
 def refresh():
@@ -1208,7 +1213,6 @@ def main(load_game):
         if ok==END_MOVE:
             hero.cur_move = hero.moves
 
-END_MOVE=900
 def handle_ui(unit):
     k = get_and_parse_key()
     puts(0,1, ' '*78)
@@ -1300,15 +1304,22 @@ def handle_ui(unit):
                 txt.append(f'{item.name} {n}')
         Misc.B.display(txt)
 
-    Misc.B.draw()
+    Misc.B.draw(battle = (not unit.is_hero))
     # stats()
     return 1
 
-def stats(castle=None):
+def stats(castle=None, battle=False):
     pl = Misc.player
     h = Misc.hero
     n = len(h.real_army())
-    st = f'[Gold:{pl.gold}][Wood:{pl.wood}][Rock:{pl.rock}][Mercury:{pl.mercury}][Sulphur:{pl.sulphur}] | Move {h.cur_move}/{h.moves}'
+    print("battle", battle)
+    print("current_unit", Misc.current_unit)
+    if battle and Misc.current_unit:
+        u = Misc.current_unit
+        move, moves = u.cur_move, u.moves
+    else:
+        move, moves = h.cur_move, h.moves
+    st = f'[Gold:{pl.gold}][Wood:{pl.wood}][Rock:{pl.rock}][Mercury:{pl.mercury}][Sulphur:{pl.sulphur}] | Move {move}/{moves}'
     x = len(st)+2
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
@@ -1322,7 +1333,6 @@ def stats(castle=None):
                   y,
                   a or blt_esc('[ ]')
                  )
-            # if a: x+=1
             x+=3
         y+=1
 
@@ -1332,7 +1342,6 @@ def stats(castle=None):
               y,
               a or blt_esc('[ ]'))
         x+=3
-    # refresh()
 
 def blt_esc(txt):
     return txt.replace('[','[[').replace(']',']]')
