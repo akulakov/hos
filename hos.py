@@ -138,7 +138,6 @@ class ObjectsClass:
         return self.objects[getattr(ID, k)]
 
     def __getattr__(self, k):
-        id = getattr(ID, k)
         return self.objects[getattr(ID, k)]
 
     def get(self, k, default=None):
@@ -421,9 +420,9 @@ class Board:
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
         Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
-        c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
-        IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=10)])
+        IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
     def draw(self, battle=False):
         blt.clear()
@@ -584,7 +583,6 @@ class Castle(Item):
                 self.troops_ui()
 
     def troops_ui(self):
-        army_size = 6
         i = 0
         Boards.b_town_ui.draw()
 
@@ -707,7 +705,7 @@ class Castle(Item):
                             slot.n+=n
                             break
                 break
-            elif k == 'ENTER': select = curs
+            # elif k == 'ENTER': select = curs
             elif k == 'LEFT' and bld and recruited[bld.units.type]:
                 bld.available+=1
                 recruited[bld.units.type]-=1
@@ -830,14 +828,14 @@ class Being(BeingItemTownMixin):
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
-        if isinstance(dialog, int):
-            dialog = conversations.get(dialog)
+        # if isinstance(dialog, int):
+            # dialog = conversations.get(dialog)
         if isinstance(being, int):
             being = Objects.get(being)
         loc = being.loc
         if isinstance(dialog, str):
             dialog = [dialog]
-        dialog = dialog or conversations[being.id]
+        # dialog = dialog or conversations[being.id]
         x = min(loc.x, 60)
         multichoice = 0
 
@@ -991,7 +989,6 @@ class Being(BeingItemTownMixin):
         elif a.x>b.x: self.move('h')
 
     def hit(self, obj):
-        B=self.B
         a = int(round((self.strength * self.n)/3))
         b = obj.health + obj.max_health*(obj.n-1)
         c = b - a
@@ -1007,7 +1004,7 @@ class Being(BeingItemTownMixin):
 
     def action(self):
         B=self.B
-        cont = last( [x for x in B.get_all_obj(self.loc) if x.type==Type.container] )
+        # cont = last( [x for x in B.get_all_obj(self.loc) if x.type==Type.container] )
 
         r,l = self.loc.mod_r(), self.loc.mod_l()
         rd, ld = r.mod_d(), l.mod_d()
@@ -1023,12 +1020,11 @@ class Being(BeingItemTownMixin):
 
     def use(self):
         """For spells maybe?"""
-        win = newwin(len(self.inv), 40, 2, 10)
         ascii_letters = string.ascii_letters
         for n, (id,qty) in enumerate(self.inv.items()):
             item = Objects[id]
-            win.addstr(n,0, f' {ascii_letters[n]}) {item.name:4} - {qty} ')
-        ch = win.getkey()
+            puts(0,n, f' {ascii_letters[n]}) {item.name:4} - {qty} ')
+        ch = get_and_parse_key()
         item = None
         if ch in ascii_letters:
             try:
@@ -1126,7 +1122,7 @@ class Building(BeingItemTownMixin):
 
     def __repr__(self):
         char = super().__repr__()
-        return f'<H: {self.name} ({self.player})>'
+        return f'<{char}: {self.name} ({self.player})>'
 
     @property
     def name(self):
@@ -1159,26 +1155,25 @@ class Saves:
         sh = shelve.open(fn, protocol=1)
         self.saves = sh['saves']
         s = self.saves[name]
-        boards[:] = s['boards']
+        board_grid[:] = s['boards']
         Objects = s['objects']
         done_events = s['done_events']
         player = Objects[ID.player]
-        loc = player.loc
         bl = s['cur_brd']
-        B = boards[bl.y][bl.x]
+        B = board_grid[bl.y][bl.x]
         return player, B
 
     def save(self, cur_brd, name=None):
         fn = f'saves/{name}.data'
         sh = shelve.open(fn, protocol=1)
         s = {}
-        s['boards'] = boards
+        s['boards'] = board_grid
         s['cur_brd'] = cur_brd
         s['objects'] = Objects
         s['done_events'] = done_events
-        player = obj_by_attr.player
+        player = Objects.player
         bl = cur_brd
-        B = boards[bl.y][bl.x]
+        B = board_grid[bl.y][bl.x]
         sh['saves'] = {name: s}
         sh.close()
         return B.get_all(player.loc), name
@@ -1267,7 +1262,6 @@ def main(load_game):
 def handle_ui(unit):
     k = get_and_parse_key()
     puts(0,1, ' '*78)
-    hero = Misc.hero
     if k=='q':
         return 0
 
@@ -1302,10 +1296,10 @@ def handle_ui(unit):
     elif k == '.':
         pass
     elif k == 'o':
-        name = prompt(win2)
+        name = prompt()
         Misc.hero, B = Saves().load(name)
     elif k == 's':
-        name = prompt(win2)
+        name = prompt()
         Saves().save(Misc.B.loc, name)
         status(f'Saved game as "{name}"')
         refresh()
@@ -1331,7 +1325,7 @@ def handle_ui(unit):
             if not k: break
             mp+=k
             status(mp)
-            Windows.refresh()
+            refresh()
             if mp.endswith(' '):
                 try:
                     x,y=mp[:-1].split(',')
@@ -1362,7 +1356,6 @@ def stats(castle=None, battle=False):
     pl = Misc.player
     if not pl: return
     h = Misc.hero
-    n = len(h.live_army()) if h else 0
     if battle and Misc.current_unit:
         u = Misc.current_unit
         move, moves = u.cur_move, u.moves
@@ -1426,7 +1419,6 @@ def editor(_map):
 
     blt.clear()
     Misc.is_game = 0
-    begin_x = 0; begin_y = 0; width = 80
     loc = Loc(20, 8)
     brush = None
     written = 0
