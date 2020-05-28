@@ -424,8 +424,8 @@ class Board:
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.player)
-        c=Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.player)
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player)
+        c=Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
         print("c.color", c.color)
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
@@ -571,22 +571,28 @@ class Castle(Item):
 
     def __init__(self, *args, player=None, **kwargs):
         self.army = [None] * 6
-        self.player = player
         super().__init__(Blocks.door, *args, **kwargs)
-        if player:
-            self.color = player.color
+        self.set_player(player)
         self.type = Type.castle
         board = Board(None, 'town_ui')
         castle_boards[self.name] = board
         # this should happen after board is in `castle_boards` because buildings will get the board from there
         board.load_map('town_ui')
 
+    def __repr__(self):
+        return f'<C: {self.name}>'
+
+    def set_player(self, player):
+        self.player = player
+        if player:
+            self.color = player.color
+
     @property
     def board(self):
         return castle_boards[self.name]
 
-    def __repr__(self):
-        return f'<C: {self.name}>'
+    def live_army(self):
+        return list(u for u in filter(None, self.army) if u.alive)
 
     def town_ui(self, hero):
         self.current_hero = hero
@@ -947,7 +953,7 @@ class Being(BeingItemTownMixin):
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
             if cas.player==self.player or not cas.live_army():
-                cas.player = player
+                cas.set_player(self.player)
                 cas.town_ui(self)
             else:
                 cas.battle_ui()
@@ -1272,6 +1278,7 @@ def main(load_game):
     Misc.is_game = 1
 
     Misc.player = Player('green', False, color='green')
+    Misc.blue_player = Player('blue', False, color='blue')
 
     ok=1
     board_setup()
