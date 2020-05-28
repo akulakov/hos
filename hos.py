@@ -5,10 +5,15 @@ import sys
 from random import choice
 from collections import defaultdict
 from textwrap import wrap
+from time import sleep
 import string
 import shelve
 from copy import copy  #, deepcopy
 from enum import Enum, auto
+
+"""
++ when over 9 units is big size, should be subscript
+"""
 
 HEIGHT = 16
 WIDTH = 38
@@ -231,7 +236,10 @@ class ID:
     hero1 = 2
 
 class Misc:
+    status = []
     current_unit = None
+    player = None
+    hero = None
 
 def mkcell():
     return [Blocks.blank]
@@ -411,10 +419,11 @@ class Board:
     def board_1(self):
         self.load_map('1')
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
-        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player)
+        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player,
+             army=[Pikeman(n=5), Pikeman(n=5)])
         c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
-        IndependentArmy(Loc(8,10), '1', army=[Peasant(n=5)])
-        IndependentArmy(Loc(8,12), '1', army=[Pikeman(n=5), Peasant(n=10)])
+        IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
+        IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=10)])
 
     def draw(self, battle=False):
         blt.clear()
@@ -439,6 +448,9 @@ class Board:
         for y,x,txt in self.labels:
             puts(x,y,txt)
         stats(battle=battle)
+        for n, msg in enumerate(Misc.status):
+            puts2(1, 2+n, msg)
+            Misc.status = []
         refresh()
 
     def put(self, obj, loc=None):
@@ -741,23 +753,35 @@ class BattleUI:
             for h, u in [(a,u) for u in a.live_army()] + [(b,u) for u in b.live_army()]:
                 Misc.current_unit = u   # for stats()
                 while 1:
+                    if not u.cur_move:
+                        u.cur_move = u.moves
+                        u.color=None
+                        blt_put_obj(u)
+                        break
                     if h.player:
                         u.color = 'light blue'
-                        B.draw(battle=1)
+                        blt_put_obj(u)
                         ok = handle_ui(u)
                         u.color = None
                         if not ok:
                             return
                         if ok==END_MOVE:
                             u.cur_move = u.moves
+                            u.color=None
+                            blt_put_obj(u)
                             break
                     else:
                         tgt = first(hh.live_army())
                         if not tgt: break
+                        u.color = 'light blue'
+                        blt_put_obj(u)
+                        sleep(0.25)
                         u.attack(tgt)
                         B.draw(battle=1)
                         if u.cur_move==0:
                             u.cur_move = u.moves
+                            u.color=None
+                            blt_put_obj(u)
                             break
 
                     for hero,other in [(a,b),(b,a)]:
@@ -768,9 +792,16 @@ class BattleUI:
                                 other.xp += hero._strength
                             return
 
+def blt_put_obj(obj):
+    x,y=obj.loc
+    x = x*2 +(0 if y%2==0 else 1)
+    blt.clear_area(x,y,1,1)
+    puts(x,y,obj)
+    refresh()
 
 class Being(BeingItemTownMixin):
     n = None
+    health = 1
     health = 1
     max_health = 1
     is_being = 1
@@ -787,9 +818,11 @@ class Being(BeingItemTownMixin):
             Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
+        self.max_health = self.health
+
 
     def __str__(self):
-        return super().__str__() if self.health>0 else Blocks.rubbish
+        return super().__str__() if self.n>0 else Blocks.rubbish
 
     @property
     def name(self):
@@ -886,7 +919,7 @@ class Being(BeingItemTownMixin):
         if rv and (rv[0] == LOAD_BOARD):
             return rv
         new = rv[1]
-        if new and isinstance(B[new], Being):
+        if new and isinstance(B[new], Being) and B[new].alive:
             self.attack(B[new])
             if self.cur_move:
                 self.cur_move -= 1
@@ -957,14 +990,11 @@ class Being(BeingItemTownMixin):
         elif a.x<b.x: self.move('l')
         elif a.x>b.x: self.move('h')
 
-
     def hit(self, obj):
         B=self.B
-        a = int(round((self.strength * self.n)/5))
-        b = obj.health * obj.n
+        a = int(round((self.strength * self.n)/3))
+        b = obj.health + obj.max_health*(obj.n-1)
         c = b - a
-        print('a b c', a,b,c)
-        print(f'{self.__class__} hits {obj.__class__} for {a} HP')
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
             status(f'{obj} dies')
@@ -1043,10 +1073,10 @@ class Hero(Being):
         return f'<H: {self.name} ({self.player})>'
 
     def live_army(self):
-        return list(u for u in filter(None, self.army) if u.health>0)
+        return list(u for u in filter(None, self.army) if u.alive)
 
     def army_is_dead(self):
-        return not any(u and u.health>0 for u in self.army)
+        return all(not u or u.dead for u in self.army)
 
     def can_merge(self, type):
         return any(s is None or s.type==type for s in self.army)
@@ -1330,12 +1360,13 @@ def handle_ui(unit):
 
 def stats(castle=None, battle=False):
     pl = Misc.player
+    if not pl: return
     h = Misc.hero
-    n = len(h.live_army())
+    n = len(h.live_army()) if h else 0
     if battle and Misc.current_unit:
         u = Misc.current_unit
         move, moves = u.cur_move, u.moves
-    else:
+    elif h:
         move, moves = h.cur_move, h.moves
     st = f'[Gold:{pl.gold}][Wood:{pl.wood}][Rock:{pl.rock}][Mercury:{pl.mercury}][Sulphur:{pl.sulphur}] | Move {move}/{moves}'
     x = len(st)+2
@@ -1361,6 +1392,9 @@ def stats(castle=None, battle=False):
               a or blt_esc('[ ]'))
         x+=3
 
+def status(msg):
+    Misc.status.append(msg)
+
 def blt_esc(txt):
     return txt.replace('[','[[').replace(']',']]')
 
@@ -1376,10 +1410,6 @@ def prompt():
         mp += k
         status('> '+mp)
         blt.refresh()
-
-
-def status(msg):
-    puts(0,2,msg)
 
 
 def editor(_map):
