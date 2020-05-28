@@ -712,6 +712,8 @@ class BattleUI:
         self.B=B
 
     def go(self, a, b):
+        a._strength = a.total_strength()
+        b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle
         loc = B.specials[1]
         for u in a.real_army():
@@ -741,12 +743,15 @@ class BattleUI:
                         B.draw()
                         if u.cur_move==0:
                             break
-                    if a.army_is_dead():
-                        hh.talk(hh, f'{b} wins!')
-                        return
-                    elif b.army_is_dead():
-                        hh.talk(hh, f'{a} wins!')
-                        return
+
+
+                    for hero,other in [(a,b),(b,a)]:
+                        if hero.army_is_dead():
+                            hero.talk(hero, f'{other} wins, gaining {hero._strength}XP!')
+                            self.B.remove(hero)
+                            if not hero.player or hero.player.is_ai:
+                                other.xp += hero._strength
+                            return
 
 class Being(BeingItemTownMixin):
     n = None
@@ -920,6 +925,7 @@ class Being(BeingItemTownMixin):
             status(f'You see{a} {names}')
 
     def attack(self, obj):
+        print ("in def attack()")
         a,b = self.loc, obj.loc
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
@@ -940,11 +946,8 @@ class Being(BeingItemTownMixin):
     def hit(self, obj):
         B=self.B
         a = self.strength * self.n
-        print("a", a)
         b = obj.health * obj.n
-        print("b", b)
         c = b - a
-        print("c", c)
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
             status(f'{obj} dies')
@@ -999,6 +1002,7 @@ def pad_none(lst, size):
     return lst + [None]*(size-len(lst))
 
 class Hero(Being):
+    xp = 0
     is_hero = 1
     moves = 5
     def __init__(self, *args, player=None, army=None, **kwargs ):
@@ -1026,6 +1030,10 @@ class Hero(Being):
 
     def can_merge(self, type):
         return any(s is None or s.type==type for s in self.army)
+
+    def total_strength(self):
+        return sum(u.n*u.health for u in self.real_army())
+
 IndependentArmy = Hero
 
 class ArmyUnit(Being):
