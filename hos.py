@@ -424,7 +424,7 @@ class Board:
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player)
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
         c=Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
         print("c.color", c.color)
 
@@ -569,8 +569,8 @@ class Castle(Item):
     weekly_income = 250
     current_hero = None
 
-    def __init__(self, *args, player=None, **kwargs):
-        self.army = [None] * 6
+    def __init__(self, *args, player=None, army=None, **kwargs):
+        self.army = pad_none(army or [], 6)
         super().__init__(Blocks.door, *args, **kwargs)
         self.set_player(player)
         self.type = Type.castle
@@ -581,6 +581,13 @@ class Castle(Item):
 
     def __repr__(self):
         return f'<C: {self.name}>'
+
+    # duplicated from Hero
+    def total_strength(self):
+        return sum(u.n*u.health for u in self.live_army())
+    def army_is_dead(self):
+        return all(not u or u.dead for u in self.army)
+    # / duplicated from Hero
 
     def set_player(self, player):
         self.player = player
@@ -755,6 +762,7 @@ class BattleUI:
         self._go(a,b)
         a.army = pad_none(a.live_army(), 6)
         b.army = pad_none(b.live_army(), 6)
+        Misc.B = self.B
 
     def _go(self, a, b):
         a._strength = a.total_strength()
@@ -783,7 +791,7 @@ class BattleUI:
                         u.color=None
                         blt_put_obj(u)
                         break
-                    if h.player:
+                    if h.player and not h.player.is_ai:
                         u.color = 'light blue'
                         blt_put_obj(u)
                         ok = handle_ui(u)
@@ -809,10 +817,13 @@ class BattleUI:
                             blt_put_obj(u)
                             break
 
-                    for hero,other in [(a,b),(b,a)]:
+                    for hero, other in [(a,b),(b,a)]:
                         if hero.army_is_dead():
-                            hero.talk(hero, f'{other} wins, gaining {hero._strength}XP!')
-                            self.B.remove(hero)
+                            x = hero if hero.is_hero else other
+                            x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
+                            if hero.is_hero:
+                                # we don't remove if it's a castle
+                                self.B.remove(hero)
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
                             return
@@ -956,7 +967,7 @@ class Being(BeingItemTownMixin):
                 cas.set_player(self.player)
                 cas.town_ui(self)
             else:
-                cas.battle_ui()
+                BattleUI(B).go(self, cas)
             return None, None
 
         if new and B.is_blocked(new):
@@ -1278,7 +1289,7 @@ def main(load_game):
     Misc.is_game = 1
 
     Misc.player = Player('green', False, color='green')
-    Misc.blue_player = Player('blue', False, color='blue')
+    Misc.blue_player = Player('blue', True, color='blue')
 
     ok=1
     board_setup()
