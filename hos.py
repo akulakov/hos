@@ -293,7 +293,7 @@ class Loc:
 class Board:
     """Game board (single screen)."""
     def __init__(self, loc, _map):
-        self.B = [mkrow() for _ in range(HEIGHT)]
+        self.clear()
         self.labels = []
         self.loc = loc
         self._map = str(_map)
@@ -311,6 +311,9 @@ class Board:
         for y, row in enumerate(self.B):
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
+
+    def clear(self):
+        self.B = [mkrow() for _ in range(HEIGHT)]
 
     def found_type_at(self, type, loc):
         def get_obj(x):
@@ -411,6 +414,7 @@ class Board:
         Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player)
         c = Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
         IndependentArmy(Loc(8,10), '1', army=[Peasant(n=5)])
+        IndependentArmy(Loc(8,12), '1', army=[Pikeman(n=5), Peasant(n=10)])
 
     def draw(self, battle=False):
         blt.clear()
@@ -711,39 +715,50 @@ class BattleUI:
         self.B=B
 
     def go(self, a, b):
+        self._go(a,b)
+        a.army = pad_none(a.live_army(), 6)
+        b.army = pad_none(b.live_army(), 6)
+
+    def _go(self, a, b):
         a._strength = a.total_strength()
         b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle
+        B.clear()
+        B.load_map('battle')
+
         loc = B.specials[1]
-        for u in a.real_army():
+        for u in a.live_army():
             B.put(u, loc)
             loc = loc.mod_d(2)
         loc = B.specials[2]
-        for u in b.real_army():
+        for u in b.live_army():
             B.put(u, loc)
             loc = loc.mod_d(2)
 
         hh = a if (a.player and not a.player.is_ai) else b
         B.draw(battle=1)
         while 1:
-            for h, u in [(a,u) for u in a.real_army()] + [(b,u) for u in b.real_army()]:
+            for h, u in [(a,u) for u in a.live_army()] + [(b,u) for u in b.live_army()]:
                 Misc.current_unit = u   # for stats()
                 while 1:
                     if h.player:
                         u.color = 'light blue'
+                        B.draw(battle=1)
                         ok = handle_ui(u)
                         u.color = None
                         if not ok:
                             return
                         if ok==END_MOVE:
-                            u.cur_move=u.moves
+                            u.cur_move = u.moves
                             break
                     else:
-                        u.attack(hh.army[0])
+                        tgt = first(hh.live_army())
+                        if not tgt: break
+                        u.attack(tgt)
                         B.draw(battle=1)
                         if u.cur_move==0:
+                            u.cur_move = u.moves
                             break
-
 
                     for hero,other in [(a,b),(b,a)]:
                         if hero.army_is_dead():
@@ -926,7 +941,6 @@ class Being(BeingItemTownMixin):
             status(f'You see{a} {names}')
 
     def attack(self, obj):
-        print ("in def attack()")
         a,b = self.loc, obj.loc
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
@@ -946,15 +960,20 @@ class Being(BeingItemTownMixin):
 
     def hit(self, obj):
         B=self.B
-        a = self.strength * self.n
+        a = int(round((self.strength * self.n)/5))
         b = obj.health * obj.n
         c = b - a
+        print('a b c', a,b,c)
+        print(f'{self.__class__} hits {obj.__class__} for {a} HP')
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
             status(f'{obj} dies')
             obj.n = obj.health = 0
         else:
-            obj.n, obj.health = divmod(c, obj.max_health)
+            n, health = divmod(c, obj.max_health)
+            obj.health = health
+            obj.n = n+1
+        self.cur_move = 0
 
     def action(self):
         B=self.B
@@ -992,7 +1011,7 @@ class Being(BeingItemTownMixin):
 
     @property
     def alive(self):
-        return self.health>0
+        return self.n>0
 
     @property
     def dead(self):
@@ -1023,8 +1042,8 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
-    def real_army(self):
-        return list(filter(None, self.army))
+    def live_army(self):
+        return list(u for u in filter(None, self.army) if u.health>0)
 
     def army_is_dead(self):
         return not any(u and u.health>0 for u in self.army)
@@ -1033,7 +1052,7 @@ class Hero(Being):
         return any(s is None or s.type==type for s in self.army)
 
     def total_strength(self):
-        return sum(u.n*u.health for u in self.real_army())
+        return sum(u.n*u.health for u in self.live_army())
 
 IndependentArmy = Hero
 
@@ -1046,6 +1065,7 @@ class ArmyUnit(Being):
 class Peasant(ArmyUnit):
     strength = 1
     defence = 1
+    health = 5
     moves = 4
     cost = 15
     char = Blocks.peasant
@@ -1054,6 +1074,7 @@ class Peasant(ArmyUnit):
 class Pikeman(ArmyUnit):
     strength = 3
     defence = 4
+    health = 7
     moves = 4
     cost = 25
     char = Blocks.pikeman
@@ -1305,15 +1326,12 @@ def handle_ui(unit):
         Misc.B.display(txt)
 
     Misc.B.draw(battle = (not unit.is_hero))
-    # stats()
     return 1
 
 def stats(castle=None, battle=False):
     pl = Misc.player
     h = Misc.hero
-    n = len(h.real_army())
-    print("battle", battle)
-    print("current_unit", Misc.current_unit)
+    n = len(h.live_army())
     if battle and Misc.current_unit:
         u = Misc.current_unit
         move, moves = u.cur_move, u.moves
