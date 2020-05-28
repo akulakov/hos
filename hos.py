@@ -23,6 +23,7 @@ SLP = 0.01
 SEQ_TYPES = (list, tuple)
 debug_log = open('debug', 'w')
 board_grid = []
+castle_boards = {}
 
 keymap = dict(
     [
@@ -132,16 +133,17 @@ class ObjectsClass:
         self.objects = {}
 
     def __setitem__(self, k, v):
-        self.objects[getattr(ID, k)] = v
+        self.objects[getattr(ID, k).value] = v
 
     def __getitem__(self, k):
-        return self.objects[getattr(ID, k)]
+        return self.objects[getattr(ID, k).value]
 
     def __getattr__(self, k):
-        return self.objects[getattr(ID, k)]
+        return self.objects[getattr(ID, k).value]
 
     def get(self, k, default=None):
-        return self.objects.get(getattr(ID, k, None))
+        id = getattr(ID, k, None)
+        return self.objects.get(id.value if id else None)
 
     def get_by_id(self, id):
         return self.objects.get(id)
@@ -230,9 +232,10 @@ class Blocks:
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
-class ID:
-    castle1 = 1
-    hero1 = 2
+class ID(Enum):
+    castle1 = auto()
+    castle2 = auto()
+    hero1 = auto()
 
 class Misc:
     status = []
@@ -344,7 +347,7 @@ class Board:
                 if not isinstance(n, str)
                ]
 
-    def load_map(self, map_num, for_editor=0):
+    def load_map(self, map_num, for_editor=0, castle=None):
         _map = open(f'maps/{map_num}.map').readlines()
         self.containers = containers = []
         self.doors = doors = []
@@ -385,12 +388,12 @@ class Board:
                         Item(Blocks.tulip, 'tulip', loc, self._map)
 
                     elif char==Blocks.hut:
-                        h=Hut(loc, self._map)
+                        h=Hut(loc, self._map, castle)
                         self.put(h)
                         self.buildings.append(h)
 
                     elif char==Blocks.barracks:
-                        a=Barracks(loc, self._map)
+                        a=Barracks(loc, self._map, castle)
                         self.put(a)
                         self.buildings.append(a)
 
@@ -418,9 +421,10 @@ class Board:
     def board_1(self):
         self.load_map('1')
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
-        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1, player=Misc.player,
+        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.player)
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.player)
+        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.player)
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
@@ -489,6 +493,7 @@ class BeingItemTownMixin:
     state = 0
     color = None
     _str = None
+    castle = None
 
     def __str__(self):
         c=self.char
@@ -526,8 +531,11 @@ class BeingItemTownMixin:
 
     @property
     def B(self):
+        if self.castle:
+            return castle_boards[self.castle.name]
         if self.board_map:
             return getattr(Boards, 'b_'+self.board_map)
+
 
 
 class Item(BeingItemTownMixin):
@@ -563,6 +571,14 @@ class Castle(Item):
         self.player = player
         super().__init__(Blocks.door, *args, **kwargs)
         self.type = Type.castle
+        board = Board(None, 'town_ui')
+        castle_boards[self.name] = board
+        # this should happen after board is in `castle_boards` because buildings will get the board from there
+        board.load_map('town_ui')
+
+    @property
+    def board(self):
+        return castle_boards[self.name]
 
     def __repr__(self):
         return f'<C: {self.name}>'
@@ -570,7 +586,7 @@ class Castle(Item):
     def town_ui(self, hero):
         self.current_hero = hero
         while 1:
-            Boards.b_town_ui.draw()
+            self.board.draw()
             stats(self)
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
@@ -584,7 +600,7 @@ class Castle(Item):
 
     def troops_ui(self):
         i = 0
-        Boards.b_town_ui.draw()
+        self.board.draw()
 
         while 1:
             stats(self)
@@ -651,7 +667,7 @@ class Castle(Item):
 
     def recruit_all(self):
         hero = self.current_hero
-        for b in Boards.b_town_ui.buildings:
+        for b in self.board.buildings:
             recruited = 0
             for _ in range(b.available):
                 if not b.available or self.player.gold < b.units.cost or not hero.can_merge(b.units.type):
@@ -665,17 +681,17 @@ class Castle(Item):
         recruited = defaultdict(int)
         curs = 0
         # empty_slots = [n for n, s in enumerate(self.current_hero.army) if not s]
-        B = Boards.b_town_ui
-        B.draw()
+        self.board.draw()
         refresh()
         stats(self)
+        B = self.board
         while 1:
             lst = [('', 'Unit', 'Available', 'Recruited')]
             for n, b in enumerate(B.buildings):
                 x = Blocks.cursor if n==curs else ''
                 lst.append((x, b.units.__name__, b.available, recruited[b.units.type]))
 
-            x = Blocks.cursor if curs==len(B.buildings) else ''
+            x = Blocks.cursor if curs==len(self.board.buildings) else ''
             lst.append((x, 'ACCEPT', '', ''))
             blt.clear_area(5,5,60, len(B.buildings)+5)
             for n, (a,b,c,d) in enumerate(lst):
@@ -957,7 +973,7 @@ class Being(BeingItemTownMixin):
                 top_obj = Objects[top_obj.id]
 
         for x in reversed(items):
-            if x.id == ID.gold:
+            if x.id == ID.gold.value:
                 self.gold += 1
                 B.remove(x, new)
             elif x.id in pick_up:
@@ -1115,8 +1131,8 @@ class Building(BeingItemTownMixin):
     available = 0
     _name = None
 
-    def __init__(self, loc=None, board_map=None):
-        self.loc, self.board_map = loc, board_map
+    def __init__(self, loc=None, board_map=None, castle=None):
+        self.loc, self.board_map, self.castle = loc, board_map, castle
         # if board_map:
             # self.B.put(self)
 
@@ -1158,7 +1174,7 @@ class Saves:
         board_grid[:] = s['boards']
         Objects = s['objects']
         done_events = s['done_events']
-        player = Objects[ID.player]
+        player = Objects[ID.player.value]
         bl = s['cur_brd']
         B = board_grid[bl.y][bl.x]
         return player, B
@@ -1220,8 +1236,7 @@ def parsekey(k):
         return k
 
 def board_setup():
-    Boards.b_town_ui = Board(Loc(0,0), 'town_ui')
-    Boards.b_town_ui.load_map('town_ui')
+
     Boards.b_battle = Board(Loc(2,0), 'battle')
     Boards.b_battle.load_map('battle')
 
