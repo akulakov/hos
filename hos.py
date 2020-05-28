@@ -160,8 +160,8 @@ class Player:
     mercury = 0
     sulphur = 0
 
-    def __init__(self, name, is_ai):
-        self.name, self.is_ai = name, is_ai
+    def __init__(self, name, is_ai, color):
+        self.name, self.is_ai, self.color = name, is_ai, color
 
     def __repr__(self):
         return f'<P: {self.name}>'
@@ -202,7 +202,8 @@ class Blocks:
     soldier = '⍾'
     peasant = '\u23f2'
     pikeman = '\u23f3'
-    hero1 = noto_tiles['man']
+    # hero1 = noto_tiles['man']
+    hero1 = '\u0003'
     gold = '☉'
     rubbish = '⛁'
     cursor = '𐌏'
@@ -421,10 +422,12 @@ class Board:
     def board_1(self):
         self.load_map('1')
         # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
-        Hero(self.specials[1], '1', name='Ardor', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
+        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.player)
-        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.player)
+        c=Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.player)
+        print("c.color", c.color)
+
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
@@ -570,6 +573,8 @@ class Castle(Item):
         self.army = [None] * 6
         self.player = player
         super().__init__(Blocks.door, *args, **kwargs)
+        if player:
+            self.color = player.color
         self.type = Type.castle
         board = Board(None, 'town_ui')
         castle_boards[self.name] = board
@@ -941,7 +946,8 @@ class Being(BeingItemTownMixin):
 
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
-            if cas.player == self.player:
+            if cas.player==self.player or not cas.live_army():
+                cas.player = player
                 cas.town_ui(self)
             else:
                 cas.battle_ui()
@@ -1070,6 +1076,8 @@ class Hero(Being):
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
+        if player:
+            self.color = player.color
         if army:
             self.army = pad_none(army, 6)
         else:
@@ -1263,7 +1271,7 @@ def main(load_game):
         os.mkdir('saves')
     Misc.is_game = 1
 
-    Misc.player = Player('green', False)
+    Misc.player = Player('green', False, color='green')
 
     ok=1
     board_setup()
