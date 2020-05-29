@@ -238,6 +238,7 @@ class ID(Enum):
     castle2 = auto()
     # castle3 = auto()
     hero1 = auto()
+    hero2 = auto()
 
 class Misc:
     status = []
@@ -422,12 +423,14 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
-        # Being(self.specials[1], name='Hero1', char=Blocks.hero1, board_map=self._map)
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
+
+        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1, id=ID.hero2.value, player=Misc.blue_player,
+             army=[Pikeman(n=2), Pikeman(n=1)])
+
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
-        c=Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
-        print("c.color", c.color)
+        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
@@ -798,11 +801,6 @@ class BattleUI:
             for h, u in [(a,u) for u in a.live_army()] + [(b,u) for u in b.live_army()]:
                 Misc.current_unit = u   # for stats()
                 while 1:
-                    if not u.cur_move:
-                        u.cur_move = u.moves
-                        u.color=None
-                        blt_put_obj(u)
-                        break
                     if h.player and not h.player.is_ai:
                         u.color = 'light blue'
                         blt_put_obj(u)
@@ -1315,6 +1313,8 @@ def main(load_game):
             hero.cur_move = hero.moves
 
 def handle_ui(unit):
+    if not unit.cur_move:
+        return END_MOVE
     k = get_and_parse_key()
     puts(0,1, ' '*78)
     if k=='q':
