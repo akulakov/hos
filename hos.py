@@ -253,6 +253,7 @@ class ID(Enum):
     castle3 = auto()
     hero1 = auto()
     hero2 = auto()
+    hero3 = auto()
 
 class Misc:
     status = []
@@ -439,9 +440,11 @@ class Board:
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
+        Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
+             army=[Pikeman(n=3), Pikeman(n=4)])
 
         Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
-             army=[Pikeman(n=2), Pikeman(n=1)])
+             army=[Pikeman(n=5), Pikeman(n=5)])
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
         Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
@@ -849,6 +852,7 @@ class BattleUI:
                             if hero.is_hero:
                                 # we don't remove if it's a castle
                                 self.B.remove(hero)
+                                hero.alive = 0
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
                             return
@@ -986,9 +990,7 @@ class Being(BeingItemTownMixin):
                 self.cur_move -= 1
             return True, True
 
-        print("dir", dir)
         if new and B.found_type_at(Type.castle, new):
-            print('### ', new)
             cas = B[new]
             if cas.player==self.player or not cas.live_army():
                 cas.set_player(self.player)
@@ -1011,6 +1013,7 @@ class Being(BeingItemTownMixin):
             B.remove(self)
             if new[0] == LOAD_BOARD or new[0] is None:
                 return new
+            print(f'moving {self.name} from {self.loc} to {new}')
             self.loc = new
             self.put(new)
             refresh()
@@ -1141,6 +1144,8 @@ class Hero(Being):
     xp = 0
     is_hero = 1
     moves = 5
+    alive = 1
+
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
@@ -1390,29 +1395,29 @@ def main(load_game):
     hero = Misc.hero = Objects.hero1
     Misc.B.draw()
     while ok:
-        print('1')
-        while ok and ok!=END_MOVE:
-            ok = handle_ui(hero)
-            if ok==END_MOVE:
-                hero.cur_move = hero.moves
-        print('after human moves')
-        if not ok:
-            break
-        print("ai_heroes", ai_heroes)
+        for hero in [h for h in Misc.player.heroes() if h.alive]:
+            while ok and ok!=END_MOVE:
+                ok = handle_ui(hero)
+                if ok=='q': return
+                if ok==END_MOVE:
+                    hero.cur_move = hero.moves
+            if not ok:
+                break
+            ok=1
         for h in ai_heroes:
-            h.ai_move()
-        ok=1
+            if h.alive:
+                h.ai_move()
 
 
 def handle_ui(unit):
-    print ("in handle_ui()")
+    # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
 
     if not unit.cur_move:
         return END_MOVE
     k = get_and_parse_key()
     puts(0,1, ' '*78)
     if k=='q':
-        return 0
+        return 'q'
 
     elif k in 'yubnhlHL':
         if k in 'HL':
@@ -1455,7 +1460,7 @@ def handle_ui(unit):
     elif k == 'v':
         status(str(unit.loc))
     elif k == ' ':
-        Misc.hero.action()
+        unit.action()
     elif k == '5' and DBG:
         k = get_and_parse_key()
         k2 = get_and_parse_key()
