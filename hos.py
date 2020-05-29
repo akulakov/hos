@@ -236,6 +236,7 @@ BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 class ID(Enum):
     castle1 = auto()
     castle2 = auto()
+    # castle3 = auto()
     hero1 = auto()
 
 class Misc:
@@ -431,6 +432,11 @@ class Board:
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
+    def board_2(self):
+        # Castle('Castle 3', self.specials[1], self._map, id=ID.castle3.value, player=Misc.blue_player, army=[Peasant(n=1)])
+        self.load_map('2')
+        Castle('Castle 3', self.specials[1], self._map, player=Misc.blue_player, army=[Peasant(n=1)])
+
     def draw(self, battle=False):
         blt.clear()
         blt.color("white")
@@ -488,7 +494,13 @@ def debug(*args):
 print=debug
 
 class Boards:
-    pass
+    @staticmethod
+    def get_by_map(map):
+        return getattr(Boards, 'b_'+map)
+
+    @staticmethod
+    def get_by_loc(loc):
+        return board_grid[loc.y][loc.x]
 
 class BeingItemTownMixin:
     is_player = 0
@@ -523,7 +535,7 @@ class BeingItemTownMixin:
         self.inv[id] += n
 
     def move_to_board(self, _map, specials_ind=None, loc=None):
-        to_B = getattr(Boards, _map)
+        to_B = getattr(Boards, 'b_'+_map)
         if specials_ind is not None:
             loc = to_B.specials[specials_ind]
         self.B.remove(self)
@@ -1261,16 +1273,18 @@ def parsekey(k):
         return k
 
 def board_setup():
-
     Boards.b_battle = Board(Loc(2,0), 'battle')
     Boards.b_battle.load_map('battle')
 
     Boards.b_1 = Board(Loc(0,2), '1')
     Boards.b_1.board_1()
+    Boards.b_2 = Board(Loc(1,2), '2')
+    Boards.b_2.board_2()
     board_grid[:] = [
+        # 0 means no board
         ['town_ui', 0, 'battle'],
         [0,0,0],
-        ['1'],
+        ['1', '2', 0],
     ]
     Misc.B = Boards.b_1
 
@@ -1331,7 +1345,7 @@ def handle_ui(unit):
             # ugly but....
             p_loc = Loc(x, y)
             if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
-                Misc.B = unit.move_to_board(board_grid[loc.y][loc.x]._map, loc=p_loc)
+                Misc.B = unit.move_to_board(Boards.get_by_loc(loc), loc=p_loc)
         stats()
 
     elif k == '.':
