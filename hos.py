@@ -24,6 +24,9 @@ SEQ_TYPES = (list, tuple)
 debug_log = open('debug', 'w')
 board_grid = []
 castle_boards = {}
+ai_heroes = []
+player_heroes = []
+players = []
 
 keymap = dict(
     [
@@ -162,9 +165,19 @@ class Player:
 
     def __init__(self, name, is_ai, color):
         self.name, self.is_ai, self.color = name, is_ai, color
+        self.is_human = not is_ai
+        self._heroes = []
+        self._castles = []
 
     def __repr__(self):
         return f'<P: {self.name}>'
+
+    def heroes(self):
+        return (Objects.get_by_id(id) for id in self._heroes)
+
+    def castles(self):
+        return (Objects.get_by_id(id) for id in self._castles)
+
 
 
 class Type(Enum):
@@ -203,7 +216,8 @@ class Blocks:
     peasant = '\u23f2'
     pikeman = '\u23f3'
     # hero1 = noto_tiles['man']
-    hero1 = '\u0003'
+    hero1_l = '\u0003'
+    hero1_r = '\u0004'
     gold = '☉'
     rubbish = '⛁'
     cursor = '𐌏'
@@ -236,7 +250,7 @@ BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 class ID(Enum):
     castle1 = auto()
     castle2 = auto()
-    # castle3 = auto()
+    castle3 = auto()
     hero1 = auto()
     hero2 = auto()
 
@@ -423,10 +437,10 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
-        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1, id=ID.hero1.value, player=Misc.player,
+        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=5), Pikeman(n=5)])
 
-        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1, id=ID.hero2.value, player=Misc.blue_player,
+        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
              army=[Pikeman(n=2), Pikeman(n=1)])
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
@@ -436,9 +450,8 @@ class Board:
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
     def board_2(self):
-        # Castle('Castle 3', self.specials[1], self._map, id=ID.castle3.value, player=Misc.blue_player, army=[Peasant(n=1)])
         self.load_map('2')
-        Castle('Castle 3', self.specials[1], self._map, player=Misc.blue_player, army=[Peasant(n=1)])
+        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3.value, player=Misc.blue_player, army=[Peasant(n=1)])
 
     def draw(self, battle=False):
         blt.clear()
@@ -588,6 +601,8 @@ class Castle(Item):
         self.army = pad_none(army or [], 6)
         super().__init__(Blocks.door, *args, **kwargs)
         self.set_player(player)
+        if player:
+            player._castles.append(self.id)
         self.type = Type.castle
         board = Board(None, 'town_ui')
         castle_boards[self.name] = board
@@ -959,7 +974,7 @@ class Being(BeingItemTownMixin):
         return 0, 0
 
     def move(self, dir):
-        if self.cur_move==0: return
+        if self.cur_move==0: return None, None
         B = self.B
         rv = self._move(dir)
         if rv and (rv[0] == LOAD_BOARD):
@@ -971,11 +986,20 @@ class Being(BeingItemTownMixin):
                 self.cur_move -= 1
             return True, True
 
+        print("dir", dir)
         if new and B.found_type_at(Type.castle, new):
+            print('### ', new)
             cas = B[new]
             if cas.player==self.player or not cas.live_army():
                 cas.set_player(self.player)
-                cas.town_ui(self)
+                if self.player.is_human:
+                    cas.town_ui(self)
+                else:
+                    print('entering town gate')
+                    # enter town gate
+                    B.remove(self)
+                    self.put(new)
+                    self.cur_move=0
             else:
                 BattleUI(B).go(self, cas)
             return None, None
@@ -992,6 +1016,11 @@ class Being(BeingItemTownMixin):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
+            if self.is_hero:
+                if dir in 'hyb':
+                    self.char = Blocks.hero1_l
+                else:
+                    self.char = Blocks.hero1_r
             return True, True
         return None, None
 
@@ -1021,7 +1050,6 @@ class Being(BeingItemTownMixin):
             status(f'You see{a} {names}')
 
     def attack(self, obj):
-        a,b = self.loc, obj.loc
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
@@ -1029,13 +1057,19 @@ class Being(BeingItemTownMixin):
                     Misc.B = self.B
                 else:
                     self.hit(obj)
+        self.move(self.get_dir(obj.loc))
 
-        elif a.x<b.x and a.y<b.y: self.move('n')
-        elif a.x<b.x and a.y>b.y: self.move('u')
-        elif a.x>b.x and a.y<b.y: self.move('b')
-        elif a.x>b.x and a.y>b.y: self.move('y')
-        elif a.x<b.x: self.move('l')
-        elif a.x>b.x: self.move('h')
+    def get_dir(self, b):
+        a = self.loc
+        b = getattr(b, 'loc', None) or b
+        print("a", a)
+        print("b", b)
+        if a.x<=b.x and a.y<b.y: return 'n'
+        elif a.x<=b.x and a.y>b.y: return 'u'
+        elif a.x>=b.x and a.y<b.y: return 'b'
+        elif a.x>=b.x and a.y>b.y: return 'y'
+        elif a.x<b.x: return 'l'
+        elif a.x>b.x: return 'h'
 
     def hit(self, obj):
         a = int(round((self.strength * self.n)/3))
@@ -1096,6 +1130,13 @@ class Being(BeingItemTownMixin):
 def pad_none(lst, size):
     return lst + [None]*(size-len(lst))
 
+def dist(a,b):
+    import math
+    a = getattr(a,'loc',a)
+    b = getattr(b,'loc',b)
+    return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2)
+
+
 class Hero(Being):
     xp = 0
     is_hero = 1
@@ -1105,6 +1146,9 @@ class Hero(Being):
         self.player = player
         if player:
             self.color = player.color
+            player._heroes.append(self.id)
+            if player.is_ai:
+                ai_heroes.append(self)
         if army:
             self.army = pad_none(army, 6)
         else:
@@ -1118,6 +1162,42 @@ class Hero(Being):
 
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
+
+    def closest(self, objs):
+        return first(sorted(objs, key=lambda x: dist(self.loc, x.loc)))
+
+    def ai_move(self):
+        """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
+        castles = [c for c in self.player.castles() if c.board_map==self.board_map]
+        for player in [p for p in players if p!=self.player]:
+            for hero in [h for h in player.heroes() if h.board_map==self.board_map]:
+                if dist(self.loc, hero.loc) < 7:
+                    mod = 1.3   # don't be a wuss
+                    if self.total_strength()*mod < hero.total_strength():
+                        c = self.closest(castles)
+                        if c:
+                            while self.cur_move:
+                                if dist(self, c)==0:
+                                    # stay in safety
+                                    self.cur_move=0
+                                elif dist(self, c)==1:
+                                    self.B.remove(self)
+                                    self.put(c.loc)
+                                    self.cur_move=0
+                                else:
+                                    self.move(self.get_dir(c))
+                                sleep(0.25)
+                                Misc.B.draw()
+                            self.cur_move = self.moves
+                    else:
+                        while self.cur_move:
+                            self.move(self.get_dir(hero))
+                            sleep(0.25)
+                            Misc.B.draw()
+                        self.cur_move = self.moves
+                else:
+                    pass
+                    # nothing to do, just end turn
 
     def live_army(self):
         return list(u for u in filter(None, self.army) if u.alive)
@@ -1286,6 +1366,7 @@ def board_setup():
     ]
     Misc.B = Boards.b_1
 
+
 def main(load_game):
     blt.open()
     blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono2.ttf, size=24")
@@ -1302,17 +1383,30 @@ def main(load_game):
 
     Misc.player = Player('green', False, color='green')
     Misc.blue_player = Player('blue', True, color='blue')
+    players.extend([Misc.player, Misc.blue_player])
 
     ok=1
     board_setup()
     hero = Misc.hero = Objects.hero1
     Misc.B.draw()
     while ok:
-        ok=handle_ui(hero)
-        if ok==END_MOVE:
-            hero.cur_move = hero.moves
+        print('1')
+        while ok and ok!=END_MOVE:
+            ok = handle_ui(hero)
+            if ok==END_MOVE:
+                hero.cur_move = hero.moves
+        print('after human moves')
+        if not ok:
+            break
+        print("ai_heroes", ai_heroes)
+        for h in ai_heroes:
+            h.ai_move()
+        ok=1
+
 
 def handle_ui(unit):
+    print ("in handle_ui()")
+
     if not unit.cur_move:
         return END_MOVE
     k = get_and_parse_key()
