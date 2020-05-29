@@ -27,6 +27,7 @@ castle_boards = {}
 ai_heroes = []
 player_heroes = []
 players = []
+castles = []
 
 keymap = dict(
     [
@@ -451,7 +452,7 @@ class Board:
              army=[Pikeman(n=3), Pikeman(n=4)])
 
         Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
-             army=[Pikeman(n=5), Pikeman(n=5)])
+             army=[Pikeman(n=1), Pikeman(n=1)])
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
         Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
@@ -613,6 +614,7 @@ class Castle(Item):
         self.set_player(player)
         if player:
             player._castles.append(self.id)
+        castles.append(self.id)
         self.type = Type.castle
         board = Board(None, 'town_ui')
         castle_boards[self.name] = board
@@ -621,6 +623,12 @@ class Castle(Item):
 
     def __repr__(self):
         return f'<C: {self.name}>'
+
+    def week_start(self):
+        if self.player:
+            self.player.gold += self.weekly_income
+        for b in self.board.buildings:
+            b.available += b.growth
 
     # duplicated from Hero
     def total_strength(self):
@@ -1207,13 +1215,13 @@ class Hero(Being):
                                 else:
                                     self.move(self.get_dir(c))
                                 sleep(0.25)
-                                Misc.B.draw()
+                                self.B.draw()
                             self.cur_move = self.moves
                     else:
                         while self.cur_move:
                             self.move(self.get_dir(hero))
                             sleep(0.25)
-                            Misc.B.draw()
+                            self.B.draw()
                         self.cur_move = self.moves
                 else:
                     pass
@@ -1290,11 +1298,13 @@ class Hut(Building):
     units = Peasant
     char = Blocks.hut
     available = 5
+    growth = 4
 
 class Barracks(Building):
     units = Pikeman
     char = Blocks.barracks
     available = 3
+    growth = 2
 
 class Saves:
     saves = {}
@@ -1411,10 +1421,11 @@ def main(load_game):
     ok=1
     board_setup()
     hero = Misc.hero = Objects.hero1
-    Misc.B.draw()
+    # Misc.B.draw()
     while ok:
         for hero in [h for h in Misc.player.heroes if h.alive]:
             while ok and ok!=END_MOVE and hero.alive:
+                hero.B.draw()
                 Misc.hero = hero
                 hero.selected = 1
                 blt_put_obj(hero)
@@ -1430,12 +1441,19 @@ def main(load_game):
         for h in ai_heroes:
             print("ai h", h)
             if h.alive:
+
                 h.ai_move()
+
         d = Misc.day
         d+=1
         if d==8:
             Misc.week+=1
-            Misc.day = 1
+            d = 1
+        if d == 1:
+            for id in castles:
+                Objects.get_by_id(id).week_start()
+        Misc.day = d
+
 
 def handle_ui(unit):
     # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
@@ -1444,6 +1462,7 @@ def handle_ui(unit):
         return END_MOVE
     k = get_and_parse_key()
     puts(0,1, ' '*78)
+    B = unit.B if unit.is_hero else Misc.B
     if k=='q':
         return 'q'
 
@@ -1520,19 +1539,19 @@ def handle_ui(unit):
     # -----------------------------------------------------------------------------------------------
 
     elif k == 'u':
-        Misc.hero.use()
+        unit.use()
 
     elif k == 'E':
-        Misc.B.display(str(Misc.B.get_all(unit.loc)))
+        B.display(str(B.get_all(unit.loc)))
     elif k == 'i':
         txt = []
         for id, n in Misc.hero.inv.items():
             item = Objects[id]
             if item and n:
                 txt.append(f'{item.name} {n}')
-        Misc.B.display(txt)
+        B.display(txt)
 
-    Misc.B.draw(battle = (not unit.is_hero))
+    B.draw(battle = (not unit.is_hero))
     return 1
 
 def stats(castle=None, battle=False):
