@@ -172,9 +172,12 @@ class Player:
     def __repr__(self):
         return f'<P: {self.name}>'
 
+    @property
     def heroes(self):
-        return (Objects.get_by_id(id) for id in self._heroes)
+        l = (Objects.get_by_id(id) for id in self._heroes)
+        return (h for h in l if h.alive)
 
+    @property
     def castles(self):
         return (Objects.get_by_id(id) for id in self._castles)
 
@@ -244,6 +247,8 @@ class Blocks:
            sub_9,
           ]
     list_select = '▶'
+    # hero_select = '\u035c'
+    hero_select = '\u2017'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -256,6 +261,8 @@ class ID(Enum):
     hero3 = auto()
 
 class Misc:
+    day = 1
+    week = 1
     status = []
     current_unit = None
     player = None
@@ -439,7 +446,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
-             army=[Pikeman(n=5), Pikeman(n=5)])
+             army=[Pikeman(n=1), Pikeman(n=1)])
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4)])
 
@@ -819,6 +826,8 @@ class BattleUI:
             for h, u in [(a,u) for u in a.live_army()] + [(b,u) for u in b.live_army()]:
                 Misc.current_unit = u   # for stats()
                 while 1:
+                    if not u.alive:
+                        break
                     if h.player and not h.player.is_ai:
                         u.color = 'light blue'
                         blt_put_obj(u)
@@ -833,17 +842,17 @@ class BattleUI:
                             break
                     else:
                         tgt = first(hh.live_army())
-                        if not tgt: break
-                        u.color = 'light blue'
-                        blt_put_obj(u)
-                        sleep(0.25)
-                        u.attack(tgt)
-                        B.draw(battle=1)
-                        if u.cur_move==0:
-                            u.cur_move = u.moves
-                            u.color=None
+                        if tgt:
+                            u.color = 'light blue'
                             blt_put_obj(u)
-                            break
+                            sleep(0.25)
+                            u.attack(tgt)
+                            B.draw(battle=1)
+                            if u.cur_move==0:
+                                u.cur_move = u.moves
+                                u.color=None
+                                blt_put_obj(u)
+                                break
 
                     for hero, other in [(a,b),(b,a)]:
                         if hero.army_is_dead():
@@ -997,7 +1006,6 @@ class Being(BeingItemTownMixin):
                 if self.player.is_human:
                     cas.town_ui(self)
                 else:
-                    print('entering town gate')
                     # enter town gate
                     B.remove(self)
                     self.put(new)
@@ -1013,7 +1021,6 @@ class Being(BeingItemTownMixin):
             B.remove(self)
             if new[0] == LOAD_BOARD or new[0] is None:
                 return new
-            print(f'moving {self.name} from {self.loc} to {new}')
             self.loc = new
             self.put(new)
             refresh()
@@ -1056,17 +1063,18 @@ class Being(BeingItemTownMixin):
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
+                    print("obj, alive", obj, obj.alive)
                     BattleUI(self.B).go(self, obj)
                     Misc.B = self.B
+                    self.cur_move = 0
                 else:
                     self.hit(obj)
-        self.move(self.get_dir(obj.loc))
+        else:
+            self.move(self.get_dir(obj.loc))
 
     def get_dir(self, b):
         a = self.loc
         b = getattr(b, 'loc', None) or b
-        print("a", a)
-        print("b", b)
         if a.x<=b.x and a.y<b.y: return 'n'
         elif a.x<=b.x and a.y>b.y: return 'u'
         elif a.x>=b.x and a.y<b.y: return 'b'
@@ -1145,6 +1153,7 @@ class Hero(Being):
     is_hero = 1
     moves = 5
     alive = 1
+    selected = 0
 
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1165,6 +1174,11 @@ class Hero(Being):
             return self.army[0].char
         return super().__str__()
 
+    def _str(self):
+        if self.selected:
+            return str(self), Blocks.hero_select
+        return str(self)
+
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
@@ -1173,9 +1187,10 @@ class Hero(Being):
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
-        castles = [c for c in self.player.castles() if c.board_map==self.board_map]
+        print ("in def ai_move()")
+        castles = [c for c in self.player.castles if c.board_map==self.board_map]
         for player in [p for p in players if p!=self.player]:
-            for hero in [h for h in player.heroes() if h.board_map==self.board_map]:
+            for hero in [h for h in player.heroes if h.board_map==self.board_map]:
                 if dist(self.loc, hero.loc) < 7:
                     mod = 1.3   # don't be a wuss
                     if self.total_strength()*mod < hero.total_strength():
@@ -1322,6 +1337,9 @@ def puts2(x, y, text):
     _puts(x, y+HEIGHT, text)
 
 def _puts(x,y,a):
+    ish = isinstance(a,Hero)
+    if ish:
+        pass
     if isinstance(a,str):
         blt.puts(x,y,a)
     elif a._str:
@@ -1395,19 +1413,29 @@ def main(load_game):
     hero = Misc.hero = Objects.hero1
     Misc.B.draw()
     while ok:
-        for hero in [h for h in Misc.player.heroes() if h.alive]:
-            while ok and ok!=END_MOVE:
+        for hero in [h for h in Misc.player.heroes if h.alive]:
+            while ok and ok!=END_MOVE and hero.alive:
+                Misc.hero = hero
+                hero.selected = 1
+                blt_put_obj(hero)
                 ok = handle_ui(hero)
                 if ok=='q': return
                 if ok==END_MOVE:
+                    hero.selected = 0
+                    blt_put_obj(hero)
                     hero.cur_move = hero.moves
             if not ok:
                 break
             ok=1
         for h in ai_heroes:
+            print("ai h", h)
             if h.alive:
                 h.ai_move()
-
+        d = Misc.day
+        d+=1
+        if d==8:
+            Misc.week+=1
+            Misc.day = 1
 
 def handle_ui(unit):
     # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
@@ -1460,7 +1488,8 @@ def handle_ui(unit):
     elif k == 'v':
         status(str(unit.loc))
     elif k == ' ':
-        unit.action()
+        unit.cur_move=0
+        # unit.action()
     elif k == '5' and DBG:
         k = get_and_parse_key()
         k2 = get_and_parse_key()
@@ -1538,6 +1567,7 @@ def stats(castle=None, battle=False):
               y,
               a or blt_esc('[ ]'))
         x+=3
+    puts2(x+2, y, f'w{Misc.week}/d{Misc.day}')
 
 def status(msg):
     Misc.status.append(msg)
