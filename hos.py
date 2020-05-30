@@ -471,7 +471,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
-             army=[Archer(n=20)])
+             army=[Archer(n=20), Pikeman(n=5)])
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
@@ -628,7 +628,12 @@ class Item(BeingItemTownMixin):
         return f'<I: {self.char}>'
 
     def move(self, dir, n=1):
-        m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0))[dir]
+        my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1))[dir]
+        if mx==1 and my and self.loc.y%2==0:
+            mx=0
+        if mx==-1 and my and self.loc.y%2==1:
+            mx=0
+        m = my,mx
         for _ in range(n):
             new = self.loc.mod(m[1],m[0])
             self.B.remove(self)
@@ -914,11 +919,6 @@ class BattleUI:
                 u.health = health
                 u.n = n+1
         loser.army = pad_none([], 6)
-        print("self.B", self.B)
-        print("loser", loser)
-        print("loser.loc", loser.loc)
-        print("self.B[loser.loc]", self.B[loser.loc])
-        # self.B.remove(loser)
 
     def _go(self, a, b):
         print ("in def _go()", a, b)
@@ -1167,8 +1167,6 @@ class Being(BeingItemTownMixin):
         """Turn char based on which way it's facing."""
         if isinstance(self, (ArmyUnit, Hero)):
             name = self.__class__.__name__.lower()
-            print("self", self)
-            print("self.is_hero", self.is_hero)
             if self.is_hero: name = name+'1'
             if hasattr(Blocks, name+'_r'):
                 if dir in 'hyb':
@@ -1443,13 +1441,15 @@ class Archer(ArmyUnit):
     type = Type.archer
 
     def fire(self, B, hero):
-        a = Arrow(Blocks.arrow_l, '', loc=self.loc)
+        char = Blocks.arrow_l if self.char==Blocks.archer_l else Blocks.arrow_r
+        a = Arrow(char, '', loc=self.loc)
         B.put(a)
         for _ in range(self.range):
             a.move(self.last_dir)
             obj = getitem(B.get_all_obj(a.loc), -2)
             if isinstance(obj, Being) and obj.alive and obj.hero!=hero:
                 self.hit(obj, ranged=1)
+                break
             blt_put_obj(a)
             sleep(0.15)
 
