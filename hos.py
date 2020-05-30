@@ -191,10 +191,14 @@ class Type(Enum):
     castle = auto()
     peasant = auto()
     pikeman = auto()
+    cavalier = auto()
     hero = auto()
 
 class Blocks:
     """All game tiles."""
+    jousting_ground = '\u25ed'
+    cavalier_l = '\u0007'
+    cavalier_r = '\u0008'
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -450,7 +454,7 @@ class Board:
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
              army=[Pikeman(n=1), Pikeman(n=1)])
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
-             army=[Pikeman(n=3), Pikeman(n=4)])
+             army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
         Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
              army=[Pikeman(n=1), Pikeman(n=1)])
@@ -814,7 +818,32 @@ class Castle(Item):
 
 class BuildUI:
     def go(self, castle):
-        pass
+        l = [Objects.get_by_id(id) for id in castles]
+        p_castles = [c for c in l if c.player==Misc.player]
+        if not p_castles:
+            Misc.hero.talk(Misc.hero, 'You have no castles!')
+            return
+        x, y = 5, 1
+        ascii_letters = string.ascii_letters
+
+        lst = []
+        for n, c in enumerate(p_castles):
+            lst.append(f' {ascii_letters[n]}) {c.name}')
+        w = max(len(l) for l in lst)
+        blt.clear_area(x, y, w+2, len(lst))
+        for n, l in enumerate(lst):
+            puts(x, y+n, l)
+
+        refresh()
+        ch = get_and_parse_key()
+        item_id = None
+        if ch and ch in ascii_letters:
+            try:
+                castle = p_castles[string.ascii_letters.index(ch)]
+            except IndexError:
+                return
+            castle.town_ui()
+
 
 class BattleUI:
     def __init__(self, B):
@@ -1023,6 +1052,13 @@ class Being(BeingItemTownMixin):
         if new and isinstance(B[new], Being) and B[new].alive:
             if not attack:
                 return None
+
+            if isinstance(self, Cavalier):
+                if dir in 'hyb':
+                    self.char = Blocks.cavalier_l
+                else:
+                    self.char = Blocks.cavalier_r
+
             self.attack(B[new])
             if self.cur_move:
                 self.cur_move -= 1
@@ -1055,11 +1091,19 @@ class Being(BeingItemTownMixin):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
+
             if self.is_hero:
                 if dir in 'hyb':
                     self.char = Blocks.hero1_l
                 else:
                     self.char = Blocks.hero1_r
+
+            if isinstance(self, Cavalier):
+                if dir in 'hyb':
+                    self.char = Blocks.cavalier_l
+                else:
+                    self.char = Blocks.cavalier_r
+
             return True, True
         return None, None
 
@@ -1299,9 +1343,19 @@ class Pikeman(ArmyUnit):
     char = Blocks.pikeman
     type = Type.pikeman
 
+class Cavalier(ArmyUnit):
+    strength = 5
+    defence = 4
+    health = 9
+    moves = 7
+    cost = 55
+    char = Blocks.cavalier_r
+    type = Type.cavalier
+
 cls_by_type = {
     Type.peasant.name: Peasant,
     Type.pikeman.name: Pikeman,
+    Type.cavalier.name: Cavalier,
 }
 
 class Building(BeingItemTownMixin):
@@ -1338,6 +1392,12 @@ class Barracks(Building):
     units = Pikeman
     char = Blocks.barracks
     available = 3
+    growth = 3
+
+class JoustingGround(Building):
+    units = Cavalier
+    char = Blocks.jousting_ground
+    available = 2
     growth = 2
 
 class Saves:
