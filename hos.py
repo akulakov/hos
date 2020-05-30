@@ -157,12 +157,27 @@ class ObjectsClass:
 
 Objects = ObjectsClass()
 
+class ID(Enum):
+    castle1 = auto()
+    castle2 = auto()
+    castle3 = auto()
+    hero1 = auto()
+    hero2 = auto()
+    hero3 = auto()
+    gold = auto()
+    wood = auto()
+    rock = auto()
+    mercury = auto()
+    sulphur = auto()
+
 class Player:
-    gold = 250
-    wood = 0
-    rock = 0
-    mercury = 0
-    sulphur = 0
+    resources = {
+        ID.gold: 1000,
+        ID.wood: 10,
+        ID.rock: 0,
+        ID.mercury: 0,
+        ID.sulphur: 0,
+    }
 
     def __init__(self, name, is_ai, color):
         self.name, self.is_ai, self.color = name, is_ai, color
@@ -257,14 +272,6 @@ class Blocks:
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
-class ID(Enum):
-    castle1 = auto()
-    castle2 = auto()
-    castle3 = auto()
-    hero1 = auto()
-    hero2 = auto()
-    hero3 = auto()
-
 class Misc:
     day = 1
     week = 1
@@ -352,6 +359,11 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
+    def random_empty(self):
+        while 1:
+            loc = choice(list(self))[0]
+            if self[loc] is Blocks.blank:
+                return loc
 
     def clear(self):
         self.B = [mkrow() for _ in range(HEIGHT)]
@@ -459,8 +471,8 @@ class Board:
         Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
              army=[Pikeman(n=1), Pikeman(n=1)])
 
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player, army=[Pikeman(n=1)])
-        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player)
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player)
+        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player, army=[Pikeman(n=1)])
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
@@ -622,8 +634,8 @@ class Castle(Item):
     current_hero = None
 
     def __init__(self, *args, player=None, army=None, **kwargs):
-        self.army = pad_none(army or [], 6)
         super().__init__(Blocks.door, *args, **kwargs)
+        self.army = pad_none(army or [], 6)
         self.set_player(player)
         if player:
             player._castles.append(self.id)
@@ -676,6 +688,8 @@ class Castle(Item):
                 self.recruit_all()
             elif k=='t':
                 self.troops_ui()
+            elif k=='b':
+                BuildUI().go(self)
 
     def troops_ui(self):
         i = 0
@@ -749,11 +763,11 @@ class Castle(Item):
         for b in self.board.buildings:
             recruited = 0
             for _ in range(b.available):
-                if not b.available or self.player.gold < b.units.cost or not hero.can_merge(b.units.type):
+                if not b.available or self.player.resources[ID.gold] < b.units.cost or not hero.can_merge(b.units.type):
                     break
                 b.available-=1
                 recruited+=1
-                self.player.gold -= b.units.cost
+                self.player.resources[ID.gold] -= b.units.cost
             self.merge_into_army([b.units(n=recruited)], hero.army)
 
     def recruit_ui(self):
@@ -782,19 +796,21 @@ class Castle(Item):
 
             k = get_and_parse_key()
             bld = getitem(B.buildings, curs)
-            gold = self.player.gold
+            gold = self.player.resources[ID.gold]
             unit_cost = bld.units.cost if bld else 0
             if k in ('q', 'ESCAPE'):
                 break
             elif k == 'DOWN': curs+=1
             elif k == 'UP': curs-=1
             elif not bld and k=='ENTER':
-                self.player.gold = gold
+                self.player.resources[ID.gold] = gold
                 # Hope there's enough empty slots!
                 for type, n in recruited.items():
                     for m, slot in enumerate(self.army):
                         if not slot:
                             self.army[m] = cls_by_type[type.name](n=n)
+                            print("self.army[m]", self.army[m])
+                            print("self.army", self.army)
                             break
                         elif slot.type==type:
                             slot.n+=n
@@ -804,11 +820,11 @@ class Castle(Item):
             elif k == 'LEFT' and bld and recruited[bld.units.type]:
                 bld.available+=1
                 recruited[bld.units.type]-=1
-                self.player.gold += unit_cost
+                gold += unit_cost
             elif k == 'RIGHT' and bld and bld.available and unit_cost<=gold:
                 bld.available-=1
                 recruited[bld.units.type]+=1
-                self.player.gold -= unit_cost
+                gold -= unit_cost
 
             if curs<0:
                 curs = len(B.buildings)
@@ -818,17 +834,24 @@ class Castle(Item):
 
 class BuildUI:
     def go(self, castle):
-        l = [Objects.get_by_id(id) for id in castles]
-        p_castles = [c for c in l if c.player==Misc.player]
-        if not p_castles:
-            Misc.hero.talk(Misc.hero, 'You have no castles!')
+        existing = (b.__class__ for b in castle.board.buildings)
+        available = [b for b in (Hut, Barracks, JoustingGround) if b not in existing]
+        _av = []
+        pl = castle.player
+        new = []
+        for b in available:
+            req = ', '.join(f'{id.name}:{amt}' for id,amt in b.cost.items())
+            new.append(f'{b.__name__}  {req}')
+
+        if not available:
+            Misc.hero.talk(Misc.hero, 'No buildings may be built.')
             return
         x, y = 5, 1
         ascii_letters = string.ascii_letters
 
         lst = []
-        for n, c in enumerate(p_castles):
-            lst.append(f' {ascii_letters[n]}) {c.name}')
+        for n, b in enumerate(new):
+            lst.append(f' {ascii_letters[n]}) {b}')
         w = max(len(l) for l in lst)
         blt.clear_area(x, y, w+2, len(lst))
         for n, l in enumerate(lst):
@@ -839,10 +862,18 @@ class BuildUI:
         item_id = None
         if ch and ch in ascii_letters:
             try:
-                castle = p_castles[string.ascii_letters.index(ch)]
+                b = available[string.ascii_letters.index(ch)]
             except IndexError:
                 return
-            castle.town_ui()
+            for id,amt in b.cost.items():
+                if amt > pl.resources[id]:
+                    print('###', id, amt, pl.resources[id])
+                    Misc.hero.talk(Misc.hero, 'Not enough resources for this building')
+                    return
+            loc = castle.board.random_empty()
+            bld = b(loc, None, castle)
+            castle.board.put(bld)
+            castle.board.buildings.append(bld)
 
 
 class BattleUI:
@@ -1383,18 +1414,21 @@ def getitem(it, ind=0, default=None):
     except IndexError: return default
 
 class Hut(Building):
+    cost = {ID.gold: 250}
     units = Peasant
     char = Blocks.hut
     available = 5
     growth = 4
 
 class Barracks(Building):
+    cost = {ID.gold: 500}
     units = Pikeman
     char = Blocks.barracks
     available = 3
     growth = 3
 
 class JoustingGround(Building):
+    cost = {ID.gold: 750, ID.wood: 5}
     units = Cavalier
     char = Blocks.jousting_ground
     available = 2
@@ -1687,7 +1721,12 @@ def stats(castle=None, battle=False):
         move, moves = u.cur_move, u.moves
     elif h:
         move, moves = h.cur_move, h.moves
-    st = f'[Gold:{pl.gold}][Wood:{pl.wood}][Rock:{pl.rock}][Mercury:{pl.mercury}][Sulphur:{pl.sulphur}] | Move {move}/{moves}'
+    res = pl.resources
+    s=''
+    for r in 'gold wood rock mercury sulphur'.split():
+        id = getattr(ID, r)
+        s+= f'[{r.title()}:{res.get(id)}]'
+    st = s + f' | Move {move}/{moves}'
     x = len(st)+2
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
