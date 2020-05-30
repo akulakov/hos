@@ -481,7 +481,7 @@ class Board:
         self.load_map('2')
         Castle('Castle 3', self.specials[1], self._map, id=ID.castle3.value, player=Misc.blue_player, army=[Peasant(n=1)])
 
-    def draw(self, battle=False):
+    def draw(self, battle=False, castle=None):
         blt.clear()
         blt.color("white")
         for y, row in enumerate(self.B):
@@ -503,7 +503,7 @@ class Board:
 
         for y,x,txt in self.labels:
             puts(x,y,txt)
-        stats(battle=battle)
+        stats(castle, battle=battle)
         for n, msg in enumerate(Misc.status):
             puts2(1, 2+n, msg)
             Misc.status = []
@@ -677,8 +677,8 @@ class Castle(Item):
     def town_ui(self, hero=None):
         self.current_hero = hero
         while 1:
-            self.board.draw()
-            stats(self)
+            self.board.draw(castle=self)
+            # stats(self)
             k = get_and_parse_key()
             if k in ('q', 'ESCAPE'):
                 break
@@ -693,7 +693,7 @@ class Castle(Item):
 
     def troops_ui(self):
         i = 0
-        self.board.draw()
+        self.board.draw(castle=self)
 
         while 1:
             stats(self)
@@ -774,9 +774,9 @@ class Castle(Item):
         recruited = defaultdict(int)
         curs = 0
         # empty_slots = [n for n, s in enumerate(self.current_hero.army) if not s]
-        self.board.draw()
-        refresh()
-        stats(self)
+        self.board.draw(castle=self)
+        # refresh()
+        # stats(self)
         B = self.board
         while 1:
             lst = [('', 'Unit', 'Available', 'Recruited')]
@@ -809,8 +809,6 @@ class Castle(Item):
                     for m, slot in enumerate(self.army):
                         if not slot:
                             self.army[m] = cls_by_type[type.name](n=n)
-                            print("self.army[m]", self.army[m])
-                            print("self.army", self.army)
                             break
                         elif slot.type==type:
                             slot.n+=n
@@ -867,7 +865,6 @@ class BuildUI:
                 return
             for id,amt in b.cost.items():
                 if amt > pl.resources[id]:
-                    print('###', id, amt, pl.resources[id])
                     Misc.hero.talk(Misc.hero, 'Not enough resources for this building')
                     return
             loc = castle.board.random_empty()
@@ -1734,8 +1731,10 @@ def stats(castle=None, battle=False):
     # for x2 in range(n-1): puts2(x+x2*4,0,'|')
     y = 1
     if castle:
+        blt.clear_area(0,y,WIDTH,1)
         x = 1
         for a in castle.army:
+            print("a", a)
             puts2(x+1 if a else x,
                   y,
                   a or blt_esc('[ ]')
@@ -1750,6 +1749,7 @@ def stats(castle=None, battle=False):
               a or blt_esc('[ ]'))
         x+=3
     puts2(x+2, y, f'w{Misc.week}/d{Misc.day}')
+    refresh()
 
 def status(msg):
     Misc.status.append(msg)
