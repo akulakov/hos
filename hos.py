@@ -183,7 +183,6 @@ class Player:
         return (Objects.get_by_id(id) for id in self._castles)
 
 
-
 class Type(Enum):
     door1 = auto()
     container = auto()
@@ -192,6 +191,7 @@ class Type(Enum):
     castle = auto()
     peasant = auto()
     pikeman = auto()
+    hero = auto()
 
 class Blocks:
     """All game tiles."""
@@ -348,6 +348,7 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
+
     def clear(self):
         self.B = [mkrow() for _ in range(HEIGHT)]
 
@@ -491,6 +492,14 @@ class Board:
             puts2(1, 2+n, msg)
             Misc.status = []
         refresh()
+
+    def neighbours(self, loc):
+        l = [loc.mod_r(), loc.mod_l(), loc.mod_u(), loc.mod_d()]
+        if loc.y%2==0:
+            l.extend([loc.mod_u().mod_l(), loc.mod_d().mod_l()])
+        else:
+            l.extend([loc.mod_u().mod_r(), loc.mod_d().mod_r()])
+        return l
 
     def put(self, obj, loc=None):
         """
@@ -649,7 +658,7 @@ class Castle(Item):
     def live_army(self):
         return list(u for u in filter(None, self.army) if u.alive)
 
-    def town_ui(self, hero):
+    def town_ui(self, hero=None):
         self.current_hero = hero
         while 1:
             self.board.draw()
@@ -802,6 +811,11 @@ class Castle(Item):
             if curs>len(B.buildings):
                 curs = 0
 
+
+class BuildUI:
+    def go(self, castle):
+        pass
+
 class BattleUI:
     def __init__(self, B):
         self.B=B
@@ -849,12 +863,12 @@ class BattleUI:
                             blt_put_obj(u)
                             break
                     else:
-                        tgt = first(hh.live_army())
+                        tgt = u.closest(hh.live_army())
                         if tgt:
                             u.color = 'light blue'
                             blt_put_obj(u)
                             sleep(0.25)
-                            u.attack(tgt)
+                            u.attack(tgt, hh.live_army())
                             B.draw(battle=1)
                             if u.cur_move==0:
                                 u.cur_move = u.moves
@@ -866,10 +880,13 @@ class BattleUI:
                         if hero.army_is_dead():
                             x = hero if hero.is_hero else other
                             x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
+                            print('h,o alive?',hero, other, hero.alive, other.alive)
                             if hero.is_hero:
                                 # we don't remove if it's a castle
                                 self.B.remove(hero)
                                 hero.alive = 0
+                            print('2: h,o alive?',hero, other, hero.alive, other.alive)
+
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
                             return
@@ -880,6 +897,8 @@ def blt_put_obj(obj):
     blt.clear_area(x,y,1,1)
     puts(x,y,obj)
     refresh()
+
+SAME_PLAYER = 20
 
 class Being(BeingItemTownMixin):
     n = None
@@ -994,14 +1013,18 @@ class Being(BeingItemTownMixin):
                 return LOAD_BOARD, self.B.loc.mod(m[1],m[0])
         return 0, 0
 
-    def move(self, dir):
+    def move(self, dir, attack=True):
         if self.cur_move==0: return None, None
         B = self.B
         rv = self._move(dir)
         if rv and (rv[0] == LOAD_BOARD):
             return rv
         new = rv[1]
+        # try: print('###', new , isinstance(B[new], Being) , B[new].alive)
+        # except Exception as e: print(e)
         if new and isinstance(B[new], Being) and B[new].alive:
+            if not attack:
+                return None
             self.attack(B[new])
             if self.cur_move:
                 self.cur_move -= 1
@@ -1067,7 +1090,7 @@ class Being(BeingItemTownMixin):
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
-    def attack(self, obj):
+    def attack(self, obj, other_enemies=None):
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
@@ -1078,7 +1101,19 @@ class Being(BeingItemTownMixin):
                 else:
                     self.hit(obj)
         else:
-            self.move(self.get_dir(obj.loc))
+            d = self.get_dir(obj.loc)
+
+            rv = self.move(d, attack=False)
+            # really dumb temporary kludge, really shouldn't have even done this..
+            if rv is None:
+                if d == 'h':
+                    self.move(choice('yb'))
+                    self.cur_move -= 1
+                elif d=='l':
+                    self.move(choice('un'))
+                    self.cur_move -= 1
+                else:
+                    self.move(choice('hjklyubn'))
 
     def get_dir(self, b):
         a = self.loc
@@ -1137,6 +1172,9 @@ class Being(BeingItemTownMixin):
 
         status('Nothing happens')
 
+    def closest(self, objs):
+        return first(sorted(objs, key=lambda x: dist(self.loc, x.loc)))
+
     @property
     def alive(self):
         return self.n>0
@@ -1162,6 +1200,7 @@ class Hero(Being):
     moves = 5
     alive = 1
     selected = 0
+    type = Type.hero
 
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1189,9 +1228,6 @@ class Hero(Being):
 
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
-
-    def closest(self, objs):
-        return first(sorted(objs, key=lambda x: dist(self.loc, x.loc)))
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
@@ -1441,7 +1477,6 @@ def main(load_game):
         for h in ai_heroes:
             print("ai h", h)
             if h.alive:
-
                 h.ai_move()
 
         d = Misc.day
