@@ -207,13 +207,17 @@ class Type(Enum):
     peasant = auto()
     pikeman = auto()
     cavalier = auto()
+    archer = auto()
     hero = auto()
 
 class Blocks:
     """All game tiles."""
     jousting_ground = '\u25ed'
+    archery_range = '\u0080'
     cavalier_l = '\u0007'
     cavalier_r = '\u0008'
+    archer_r = '\u000c'
+    archer_l = '\u000b'
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -464,7 +468,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
-             army=[Pikeman(n=1), Pikeman(n=1)])
+             army=[Pikeman(n=3), Pikeman(n=4), Archer(n=5)])
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
@@ -838,7 +842,7 @@ class Castle(Item):
 class BuildUI:
     def go(self, castle):
         existing = (b.__class__ for b in castle.board.buildings)
-        available = [b for b in (Hut, Barracks, JoustingGround) if b not in existing]
+        available = [b for b in (Hut, Barracks, ArcheryRange, JoustingGround) if b not in existing]
         _av = []
         pl = castle.player
         new = []
@@ -878,6 +882,7 @@ class BuildUI:
             castle.board.buildings.append(bld)
 
 
+AUTO_BATTLE = 11
 class BattleUI:
     def __init__(self, B):
         self.B=B
@@ -888,7 +893,29 @@ class BattleUI:
         b.army = pad_none(b.live_army(), 6)
         Misc.B = self.B
 
+    def auto_battle(self, a, b):
+        a_str = a.total_strength()
+        b_str = b.total_strength()
+        winner, loser, hp = (a,b,b_str) if a_str>b_str else (b,a,a_str)
+        if winner.player:
+            winner.xp += loser.total_strength()//2
+        for u in winner.live_army():
+            if u.total_health < hp:
+                u.n=0
+                hp-=u.total_health
+            else:
+                n, health = divmod(hp, u.max_health)
+                u.health = health
+                u.n = n+1
+        loser.army = pad_none([], 6)
+        print("self.B", self.B)
+        print("loser", loser)
+        print("loser.loc", loser.loc)
+        print("self.B[loser.loc]", self.B[loser.loc])
+        # self.B.remove(loser)
+
     def _go(self, a, b):
+        print ("in def _go()", a, b)
         a._strength = a.total_strength()
         b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle
@@ -924,6 +951,8 @@ class BattleUI:
                             u.color=None
                             blt_put_obj(u)
                             break
+                        if ok==AUTO_BATTLE:
+                            self.auto_battle(a, b)
                     else:
                         tgt = u.closest(hh.live_army())
                         if tgt:
@@ -941,14 +970,18 @@ class BattleUI:
                     for hero, other in [(a,b),(b,a)]:
                         if hero.army_is_dead():
                             x = hero if hero.is_hero else other
+                            print(1)
                             x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
+                            print(2)
                             if hero.is_hero:
                                 # we don't remove if it's a castle
                                 self.B.remove(hero)
                                 hero.alive = 0
+                            print(3)
 
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
+                            print(4)
                             return
 
 def blt_put_obj(obj):
@@ -1086,12 +1119,7 @@ class Being(BeingItemTownMixin):
             if not attack:
                 return None
 
-            if isinstance(self, Cavalier):
-                if dir in 'hyb':
-                    self.char = Blocks.cavalier_l
-                else:
-                    self.char = Blocks.cavalier_r
-
+            self.handle_directional_turn(dir)
             self.attack(B[new])
             if self.cur_move:
                 self.cur_move -= 1
@@ -1124,21 +1152,23 @@ class Being(BeingItemTownMixin):
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
-
-            if self.is_hero:
-                if dir in 'hyb':
-                    self.char = Blocks.hero1_l
-                else:
-                    self.char = Blocks.hero1_r
-
-            if isinstance(self, Cavalier):
-                if dir in 'hyb':
-                    self.char = Blocks.cavalier_l
-                else:
-                    self.char = Blocks.cavalier_r
+            self.handle_directional_turn(dir)
 
             return True, True
         return None, None
+
+    def handle_directional_turn(self, dir):
+        """Turn char based on which way it's facing."""
+        if isinstance(self, (ArmyUnit, Hero)):
+            name = self.__class__.__name__.lower()
+            print("self", self)
+            print("self.is_hero", self.is_hero)
+            if self.is_hero: name = name+'1'
+            if hasattr(Blocks, name+'_r'):
+                if dir in 'hyb':
+                    self.char = getattr(Blocks, name+'_l')
+                else:
+                    self.char = getattr(Blocks, name+'_r')
 
     def handle_player_move(self, new):
         B=self.B
@@ -1293,7 +1323,8 @@ class Hero(Being):
     def __str__(self):
         if not self.player:
             # Independent army
-            return self.army[0].char
+            u = first(self.live_army())
+            return u.char if u else ' '
         return super().__str__()
 
     def _str(self):
@@ -1361,6 +1392,10 @@ class ArmyUnit(Being):
     def __repr__(self):
         return f'<Unit:{self.char}, {self.n}>'
 
+    @property
+    def total_health(self):
+        return self.n*self.health
+
 class Peasant(ArmyUnit):
     strength = 1
     defence = 1
@@ -1379,6 +1414,15 @@ class Pikeman(ArmyUnit):
     char = Blocks.pikeman
     type = Type.pikeman
 
+class Archer(ArmyUnit):
+    strength = 2
+    defence = 2
+    health = 5
+    moves = 3
+    cost = 30
+    char = Blocks.archer_r
+    type = Type.archer
+
 class Cavalier(ArmyUnit):
     strength = 5
     defence = 4
@@ -1391,6 +1435,7 @@ class Cavalier(ArmyUnit):
 cls_by_type = {
     Type.peasant.name: Peasant,
     Type.pikeman.name: Pikeman,
+    Type.archer.name: Archer,
     Type.cavalier.name: Cavalier,
 }
 
@@ -1429,6 +1474,13 @@ class Barracks(Building):
     cost = {ID.gold: 500}
     units = Pikeman
     char = Blocks.barracks
+    available = 3
+    growth = 3
+
+class ArcheryRange(Building):
+    cost = {ID.gold: 500}
+    units = Archer
+    char = Blocks.archery_range
     available = 3
     growth = 3
 
@@ -1631,6 +1683,9 @@ def handle_ui(unit):
     elif k == 'o':
         name = prompt()
         Misc.hero, B = Saves().load(name)
+    elif k == 'a':
+        if Misc.B == Boards.b_battle:
+            return AUTO_BATTLE
     elif k == 's':
         name = prompt()
         Saves().save(Misc.B.loc, name)
