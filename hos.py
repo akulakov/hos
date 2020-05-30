@@ -730,7 +730,9 @@ class Castle(Item):
                 if blt.state(blt.TK_SHIFT):
                     h.army = self.merge_into_army(h.army, self.army)
                 else:
-                    h.army[i] = self.merge_into_army([h.army[i]], self.army)
+                    x = self.merge_into_army([h.army[i]], self.army)
+                    print("i, x", i, x)
+                    h.army[i] = x
 
             elif k == 'LEFT':
                 i-=1
@@ -753,9 +755,10 @@ class Castle(Item):
                 remains.append(a)
 
         if len(A)==1:
+            print("first(remains)", first(remains))
             return first(remains)
         else:
-            return remains + [None]*(6-len(remains))
+            return pad_none(remains, 6)
 
 
     def recruit_all(self):
@@ -806,13 +809,14 @@ class Castle(Item):
                 self.player.resources[ID.gold] = gold
                 # Hope there's enough empty slots!
                 for type, n in recruited.items():
-                    for m, slot in enumerate(self.army):
-                        if not slot:
-                            self.army[m] = cls_by_type[type.name](n=n)
-                            break
-                        elif slot.type==type:
-                            slot.n+=n
-                            break
+                    if n:
+                        for m, slot in enumerate(self.army):
+                            if not slot:
+                                self.army[m] = cls_by_type[type.name](n=n)
+                                break
+                            elif slot.type==type:
+                                slot.n+=n
+                                break
                 break
             # elif k == 'ENTER': select = curs
             elif k == 'LEFT' and bld and recruited[bld.units.type]:
@@ -828,6 +832,7 @@ class Castle(Item):
                 curs = len(B.buildings)
             if curs>len(B.buildings):
                 curs = 0
+            print(self.army)
 
 
 class BuildUI:
@@ -1353,6 +1358,9 @@ class ArmyUnit(Being):
     def _str(self):
         return str(self), getitem(Blocks.sub, self.n, '+')
 
+    def __repr__(self):
+        return f'<Unit:{self.char}, {self.n}>'
+
 class Peasant(ArmyUnit):
     strength = 1
     defence = 1
@@ -1731,7 +1739,7 @@ def stats(castle=None, battle=False):
     # for x2 in range(n-1): puts2(x+x2*4,0,'|')
     y = 1
     if castle:
-        blt.clear_area(0,y,WIDTH,1)
+        # blt.clear_area(0,y,WIDTH,1)
         x = 1
         for a in castle.army:
             print("a", a)
