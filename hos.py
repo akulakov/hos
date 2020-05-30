@@ -2,6 +2,7 @@
 from bearlibterminal import terminal as blt
 import os
 import sys
+import math
 from random import choice
 from collections import defaultdict
 from textwrap import wrap
@@ -218,6 +219,8 @@ class Blocks:
     cavalier_r = '\u0008'
     archer_r = '\u000c'
     archer_l = '\u000b'
+    arrow_r = '\u20e9'
+    arrow_l = '\u20ea'
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -468,7 +471,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
-             army=[Pikeman(n=3), Pikeman(n=4), Archer(n=5)])
+             army=[Archer(n=20)])
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
@@ -632,6 +635,8 @@ class Item(BeingItemTownMixin):
             self.loc = new
             self.B.put(self)
 
+class Arrow(Item):
+    char = Blocks.arrow_l
 
 class Castle(Item):
     weekly_income = 250
@@ -735,7 +740,6 @@ class Castle(Item):
                     h.army = self.merge_into_army(h.army, self.army)
                 else:
                     x = self.merge_into_army([h.army[i]], self.army)
-                    print("i, x", i, x)
                     h.army[i] = x
 
             elif k == 'LEFT':
@@ -744,6 +748,7 @@ class Castle(Item):
             elif k == 'RIGHT':
                 i+=1
                 if i>5: i = 0
+        h.set_army_ownership()
 
     def merge_into_army(self, A, B):
         """Merge army A into B."""
@@ -776,6 +781,7 @@ class Castle(Item):
                 recruited+=1
                 self.player.resources[ID.gold] -= b.units.cost
             self.merge_into_army([b.units(n=recruited)], hero.army)
+        hero.set_army_ownership()
 
     def recruit_ui(self):
         recruited = defaultdict(int)
@@ -942,7 +948,7 @@ class BattleUI:
                     if h.player and not h.player.is_ai:
                         u.color = 'light blue'
                         blt_put_obj(u)
-                        ok = handle_ui(u)
+                        ok = handle_ui(u, hero=h)
                         u.color = None
                         if not ok:
                             return
@@ -959,7 +965,7 @@ class BattleUI:
                             u.color = 'light blue'
                             blt_put_obj(u)
                             sleep(0.25)
-                            u.attack(tgt, hh.live_army())
+                            u.attack(tgt)
                             B.draw(battle=1)
                             if u.cur_move==0:
                                 u.cur_move = u.moves
@@ -1195,7 +1201,7 @@ class Being(BeingItemTownMixin):
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
-    def attack(self, obj, other_enemies=None):
+    def attack(self, obj):
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
@@ -1230,8 +1236,9 @@ class Being(BeingItemTownMixin):
         elif a.x<b.x: return 'l'
         elif a.x>b.x: return 'h'
 
-    def hit(self, obj):
-        a = int(round((self.strength * self.n)/3))
+    def hit(self, obj, ranged=False):
+        str = self.strength if not ranged else self.range_weapon_str
+        a = int(round((str * self.n)/3))
         b = obj.health + obj.max_health*(obj.n-1)
         c = b - a
         status(f'{self} hits {obj} for {a} HP')
@@ -1293,7 +1300,6 @@ def pad_none(lst, size):
     return lst + [None]*(size-len(lst))
 
 def dist(a,b):
-    import math
     a = getattr(a,'loc',a)
     b = getattr(b,'loc',b)
     return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2)
@@ -1319,6 +1325,12 @@ class Hero(Being):
             self.army = pad_none(army, 6)
         else:
             self.army = [None]*6
+        self.set_army_ownership()
+
+    def set_army_ownership(self):
+        for u in self.army:
+            if u:
+                u.hero = self
 
     def __str__(self):
         if not self.player:
@@ -1385,6 +1397,11 @@ IndependentArmy = Hero
 
 class ArmyUnit(Being):
     _name = None
+    last_dir = 'l'
+
+    def __init__(self, *args, hero=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hero = hero
 
     def _str(self):
         return str(self), getitem(Blocks.sub, self.n, '+')
@@ -1420,8 +1437,22 @@ class Archer(ArmyUnit):
     health = 5
     moves = 3
     cost = 30
+    range_weapon_str = 1
+    range = 7
     char = Blocks.archer_r
     type = Type.archer
+
+    def fire(self, B, hero):
+        a = Arrow(Blocks.arrow_l, '', loc=self.loc)
+        B.put(a)
+        for _ in range(self.range):
+            a.move(self.last_dir)
+            obj = getitem(B.get_all_obj(a.loc), -2)
+            if isinstance(obj, Being) and obj.alive and obj.hero!=hero:
+                self.hit(obj, ranged=1)
+            blt_put_obj(a)
+            sleep(0.15)
+
 
 class Cavalier(ArmyUnit):
     strength = 5
@@ -1639,7 +1670,7 @@ def main(load_game):
         Misc.day = d
 
 
-def handle_ui(unit):
+def handle_ui(unit, hero=None):
     # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
 
     if not unit.cur_move:
@@ -1653,6 +1684,7 @@ def handle_ui(unit):
     elif k in 'yubnhlHL':
         if k in 'HL':
             k = k.lower()
+            unit.last_dir = k
             for _ in range(5):
                 rv = unit.move(k)
                 if not rv:
@@ -1661,9 +1693,11 @@ def handle_ui(unit):
                     break
         else:
             rv = unit.move(k)
+            unit.last_dir = k
             if not rv:
                 return END_MOVE
 
+        unit.last_dir = k
         if rv[0] == LOAD_BOARD:
             loc = rv[1]
             x, y = unit.loc
@@ -1680,6 +1714,9 @@ def handle_ui(unit):
 
     elif k == '.':
         pass
+    elif k == 'f':
+        if isinstance(unit, Archer):
+            unit.fire(B, hero)
     elif k == 'o':
         name = prompt()
         Misc.hero, B = Saves().load(name)
