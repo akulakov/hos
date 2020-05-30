@@ -880,12 +880,10 @@ class BattleUI:
                         if hero.army_is_dead():
                             x = hero if hero.is_hero else other
                             x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
-                            print('h,o alive?',hero, other, hero.alive, other.alive)
                             if hero.is_hero:
                                 # we don't remove if it's a castle
                                 self.B.remove(hero)
                                 hero.alive = 0
-                            print('2: h,o alive?',hero, other, hero.alive, other.alive)
 
                             if not hero.player or hero.player.is_ai:
                                 other.xp += hero._strength
@@ -1578,6 +1576,9 @@ def handle_ui(unit):
 
     elif k == 'E':
         B.display(str(B.get_all(unit.loc)))
+    elif k == 'm':
+        manage_castles()
+
     elif k == 'i':
         txt = []
         for id, n in Misc.hero.inv.items():
@@ -1588,6 +1589,34 @@ def handle_ui(unit):
 
     B.draw(battle = (not unit.is_hero))
     return 1
+
+def manage_castles():
+    l = [Objects.get_by_id(id) for id in castles]
+    p_castles = [c for c in l if c.player==Misc.player]
+    if not p_castles:
+        Misc.hero.talk(Misc.hero, 'You have no castles!')
+        return
+    x, y = 5, 1
+    ascii_letters = string.ascii_letters
+
+    lst = []
+    for n, c in enumerate(p_castles):
+        lst.append(f' {ascii_letters[n]}) {c.name}')
+    w = max(len(l) for l in lst)
+    blt.clear_area(x, y, w+2, len(lst))
+    for n, l in enumerate(lst):
+        puts(x, y+n, l)
+
+    refresh()
+    ch = get_and_parse_key()
+    item_id = None
+    if ch and ch in ascii_letters:
+        try:
+            castle = p_castles[string.ascii_letters.index(ch)]
+        except IndexError:
+            return
+        castle.town_ui()
+
 
 def stats(castle=None, battle=False):
     pl = Misc.player
