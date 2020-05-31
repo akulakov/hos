@@ -138,17 +138,17 @@ class ObjectsClass:
         self.objects = {}
 
     def __setitem__(self, k, v):
-        self.objects[getattr(ID, k).value] = v
+        self.objects[getattr(ID, k)] = v
 
     def __getitem__(self, k):
-        return self.objects[getattr(ID, k).value]
+        return self.objects[getattr(ID, k)]
 
     def __getattr__(self, k):
-        return self.objects[getattr(ID, k).value]
+        return self.objects[getattr(ID, k)]
 
     def get(self, k, default=None):
         id = getattr(ID, k, None)
-        return self.objects.get(id.value if id else None)
+        return self.objects.get(id)
 
     def get_by_id(self, id):
         return self.objects.get(id)
@@ -231,6 +231,7 @@ class Blocks:
     archer_l = '\u000b'
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
+    gold = '\u009e'
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -258,7 +259,7 @@ class Blocks:
     # hero1 = noto_tiles['man']
     hero1_l = '\u0003'
     hero1_r = '\u0004'
-    gold = '☉'
+    # gold = '☉'
     rubbish = '⛁'
     cursor = '𐌏'
     hut = '△'
@@ -480,23 +481,26 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
-        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1.value, player=Misc.player,
+        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
              army=[Archer(n=20), Pikeman(n=5)])
-        Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3.value, player=Misc.player,
+        Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
-        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2.value, player=Misc.blue_player,
+        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
              army=[Pikeman(n=1), Pikeman(n=1)])
 
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1.value, player=Misc.blue_player)
-        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2.value, player=Misc.blue_player, army=[Pikeman(n=1)])
+        g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100)
+        self.put(g)
+
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player)
+        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[Pikeman(n=1)])
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
     def board_2(self):
         self.load_map('2')
-        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3.value, player=Misc.blue_player, army=[Peasant(n=1)])
+        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)])
 
     def draw(self, battle=False, castle=None):
         blt.clear()
@@ -514,7 +518,8 @@ class Board:
                 if isinstance(a, str):
                     puts(x,y,a)
                     continue
-                if isinstance(a, int) and a<500:
+                # if isinstance(a, int) and a<500:
+                if isinstance(a, ID):
                     a = Objects.get_by_id(a)
                 puts(x,y,a)
 
@@ -625,9 +630,9 @@ class BeingItemTownMixin:
 class Item(BeingItemTownMixin):
     board_map = None
 
-    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None):
-        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color = \
-                char, name, loc, board_map, id, type, color
+    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
+        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
+                char, name, loc, board_map, id, type, color, n
         self.inv = defaultdict(int)
         if id:
             Objects.set_by_id(id, self)
@@ -649,6 +654,10 @@ class Item(BeingItemTownMixin):
             self.B.remove(self)
             self.loc = new
             self.B.put(self)
+
+class ResourceItem(Item):
+    color = 'yellow'
+    n = 0
 
 class Arrow(Item):
     char = Blocks.arrow_l
@@ -725,7 +734,7 @@ class Castle(Item):
 
         lst = []
         for id, n in hero_names.items():
-            if not Objects.get_by_id(id.value):
+            if not Objects.get_by_id(id):
                 lst.append((id, n))
 
         pl = self.player
@@ -754,7 +763,7 @@ class Castle(Item):
             except IndexError:
                 return
 
-            h = Hero(self.loc, self.B._map, name=name, char=Blocks.hero1_l, id=id.value, player=self.player)
+            h = Hero(self.loc, self.B._map, name=name, char=Blocks.hero1_l, id=id, player=self.player)
             (ai_heroes if self.player.is_ai else player_heroes).append(h)
 
     def troops_ui(self):
@@ -1211,6 +1220,8 @@ class Being(BeingItemTownMixin):
             if self.cur_move:
                 self.cur_move -= 1
             self.handle_directional_turn(dir)
+            if self.is_hero and self.player and not self.player.is_ai:
+                self.handle_player_move(new)
 
             return True, True
         return None, None
@@ -1228,20 +1239,20 @@ class Being(BeingItemTownMixin):
 
     def handle_player_move(self, new):
         B=self.B
-        pick_up = []
-        top_obj = B.get_top_obj(new)
+        pick_up = [ID.gold]
+        # top_obj = B.get_(new)
         items = B.get_all_obj(new)
+        top_obj = last(items)
         if top_obj:
             # why does this work with unicode offsets? maybe it doesn't..
             if isinstance(top_obj, int):
                 top_obj = Objects[top_obj.id]
 
         for x in reversed(items):
-            if x.id == ID.gold.value:
-                self.gold += 1
-                B.remove(x, new)
-            elif x.id in pick_up:
-                self.inv[x.id] += 1
+            if x.id in pick_up:
+                # self.inv[x.id] += 1
+                if self.player:
+                    self.player.resources[x.id] += x.n
                 B.remove(x, new)
 
         names = [o.name for o in B.get_all_obj(new) if o.name]
@@ -1546,6 +1557,12 @@ def getitem(it, ind=0, default=None):
     try: return it[ind]
     except IndexError: return default
 
+class Sawmill(Building):
+    resource = ID.wood
+    available = 4
+    growth = 2
+
+
 class Hut(Building):
     cost = {ID.gold: 250}
     units = Peasant
@@ -1587,7 +1604,7 @@ class Saves:
         board_grid[:] = s['boards']
         Objects = s['objects']
         done_events = s['done_events']
-        player = Objects[ID.player.value]
+        player = Objects[ID.player]
         bl = s['cur_brd']
         B = board_grid[bl.y][bl.x]
         return player, B
