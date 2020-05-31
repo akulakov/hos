@@ -175,6 +175,8 @@ class ID(Enum):
     hero9 = auto()
     hero10 = auto()
 
+    power_bolt = auto()
+
     gold = auto()
     wood = auto()
     rock = auto()
@@ -704,7 +706,7 @@ class Castle(Item):
 
     def handle_day(self):
         if self.player:
-            self.player.gold += self.weekly_income
+            self.player.resources[ID.gold] += self.weekly_income
         if Misc.day==1:
             for b in self.board.buildings:
                 b.available += b.growth
@@ -1316,7 +1318,7 @@ class Being(BeingItemTownMixin):
 
     def hit(self, obj, ranged=False):
         str = self.strength if not ranged else self.range_weapon_str
-        hero_mod = 1 
+        hero_mod = 1
         if self.hero:
             hero_mod += (self.hero.level * 5)/100
 
@@ -1386,6 +1388,13 @@ def dist(a,b):
     b = getattr(b,'loc',b)
     return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2)
 
+class Spell:
+    id = None
+    dmg = None
+
+class PowerBolt(Spell):
+    dmg = 1
+    id = ID.power_bolt
 
 class Hero(Being):
     xp = 0
@@ -1395,9 +1404,9 @@ class Hero(Being):
     selected = 0
     level = 1
     type = Type.hero
-    level_tiers = enumerate(500,2000,5000,10000,15000,25000,50000,100000,150000)
+    level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
 
-    def __init__(self, *args, player=None, army=None, **kwargs ):
+    def __init__(self, *args, player=None, army=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
         self.player = player
         if player:
@@ -1410,6 +1419,7 @@ class Hero(Being):
         else:
             self.army = [None]*6
         self.set_army_ownership()
+        self.spells = [ID.power_bolt] + (spells or [])
 
     def set_army_ownership(self):
         for u in self.army:
