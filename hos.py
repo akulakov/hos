@@ -2121,7 +2121,7 @@ def editor(_map):
         elif k == 'e':
             brush = Blocks.blank
         elif k == 'r':
-            brush = Blocks.ore
+            brush = Blocks.rock
         elif k == 's':
             B.put(Blocks.steps_r, loc)
             brush = Blocks.steps_r
