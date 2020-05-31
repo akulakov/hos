@@ -26,7 +26,9 @@ debug_log = open('debug', 'w')
 board_grid = []
 castle_boards = {}
 ai_heroes = []
+ai_buildings = []
 player_heroes = []
+player_buildings = []
 players = []
 castles = []
 
@@ -220,6 +222,7 @@ class Type(Enum):
     cavalier = auto()
     archer = auto()
     hero = auto()
+    building = auto()
 
 class Blocks:
     """All game tiles."""
@@ -232,6 +235,7 @@ class Blocks:
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
     gold = '\u009e'
+    sawmill = '\u0239'
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -264,6 +268,7 @@ class Blocks:
     cursor = '𐌏'
     hut = '△'
     barracks = '⌂'
+    sub_0 = '\u2080'
     sub_1 = '₁'
     sub_2 = '₂'
     sub_3 = '₃'
@@ -273,7 +278,7 @@ class Blocks:
     sub_7 = '₇'
     sub_8 = '₈'
     sub_9 = '₉'
-    sub = [None,
+    sub = [sub_0,
            sub_1,
            sub_2,
            sub_3,
@@ -491,6 +496,8 @@ class Board:
 
         g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100)
         self.put(g)
+        s = Sawmill(self.specials[7], '1', player=Misc.player)
+        self.put(s)
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player)
         Castle('Castle 2', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[Pikeman(n=1)])
@@ -583,6 +590,8 @@ class BeingItemTownMixin:
     color = None
     _str = None
     castle = None
+    player = None
+    id = None
 
     def __str__(self):
         c=self.char
@@ -617,6 +626,17 @@ class BeingItemTownMixin:
         to_B.put(self)
         self.board_map = to_B._map
         return to_B
+
+    def set_player(self, player):
+        self.player = player
+        if player:
+            self.color = player.color
+            if self in player_buildings:
+                player_buildings.remove(self)
+            if self.type==Type.building:
+                player.resources[self.resource] += self.available
+                self.available = 0
+                (ai_buildings if self.player.is_ai else player_buildings).append(self)
 
     @property
     def B(self):
@@ -682,11 +702,12 @@ class Castle(Item):
     def __repr__(self):
         return f'<C: {self.name}>'
 
-    def week_start(self):
+    def handle_day(self):
         if self.player:
             self.player.gold += self.weekly_income
-        for b in self.board.buildings:
-            b.available += b.growth
+        if Misc.day==1:
+            for b in self.board.buildings:
+                b.available += b.growth
 
     # duplicated from Hero
     def total_strength(self):
@@ -694,11 +715,6 @@ class Castle(Item):
     def army_is_dead(self):
         return all(not u or u.dead for u in self.army)
     # / duplicated from Hero
-
-    def set_player(self, player):
-        self.player = player
-        if player:
-            self.color = player.color
 
     @property
     def board(self):
@@ -1192,6 +1208,10 @@ class Being(BeingItemTownMixin):
                 self.cur_move -= 1
             return True, True
 
+        if new and B.found_type_at(Type.building, new):
+            b = B[new]
+            b.set_player(self.player)
+
         if new and B.found_type_at(Type.castle, new):
             cas = B[new]
             if cas.player==self.player or not cas.live_army():
@@ -1536,9 +1556,10 @@ cls_by_type = {
 class Building(BeingItemTownMixin):
     available = 0
     _name = None
+    type = Type.building
 
-    def __init__(self, loc=None, board_map=None, castle=None):
-        self.loc, self.board_map, self.castle = loc, board_map, castle
+    def __init__(self, loc=None, board_map=None, castle=None, player=None):
+        self.loc, self.board_map, self.castle, self.player = loc, board_map, castle, player
         # if board_map:
             # self.B.put(self)
 
@@ -1561,6 +1582,7 @@ class Sawmill(Building):
     resource = ID.wood
     available = 4
     growth = 2
+    char = Blocks.sawmill
 
 
 class Hut(Building):
@@ -1684,12 +1706,12 @@ def board_setup():
 
 def main(load_game):
     blt.open()
-    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono2.ttf, size=24")
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono.ttf, size=24")
     blt.color("white")
     blt.composition(True)
 
     blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
-    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
+    blt.set("U+E400: FreeMono.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
 
     blt.clear()
     if not os.path.exists('saves'):
@@ -1721,19 +1743,18 @@ def main(load_game):
                 break
             ok=1
         for h in ai_heroes:
-            print("ai h", h)
             if h.alive:
                 h.ai_move()
+        for b in player_buildings + ai_buildings:
+            b.available += b.growth
 
         d = Misc.day
-        d+=1
-        if d==8:
+        Misc.day+=1
+        if Misc.day==8:
             Misc.week+=1
-            d = 1
-        if d == 1:
-            for id in castles:
-                Objects.get_by_id(id).week_start()
-        Misc.day = d
+            Misc.day = 1
+        for id in castles:
+            Objects.get_by_id(id).handle_day()
 
 
 def handle_ui(unit, hero=None):
