@@ -236,8 +236,8 @@ class Blocks:
     cavalier_r = '\u0008'
     archer_r = '\u000c'
     archer_l = '\u000b'
-    griffin_r = '\u000c'
-    griffin_l = '\u000b'
+    griffin_r = '\u000e'
+    griffin_l = '\u000e'
 
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
@@ -317,8 +317,10 @@ def mkrow():
     return [mkcell() for _ in range(WIDTH)]
 
 def first(x):
+    x=tuple(x)
     return x[0] if x else None
 def last(x):
+    x=tuple(x)
     return x[-1] if x else None
 
 def chk_oob(loc, y=0, x=0):
@@ -420,6 +422,9 @@ class Board:
                 if not isinstance(n, str)
                ]
 
+    def get_being(self, loc):
+        return first(o for o in self.get_all_obj(loc) if isinstance(o, Being))
+
     def load_map(self, map_num, for_editor=0, castle=None):
         _map = open(f'maps/{map_num}.map').readlines()
         self.containers = containers = []
@@ -494,7 +499,8 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
-             army=[Archer(n=20), Pikeman(n=5)])
+             army=[Archer(n=20), Pikeman(n=5), Griffin(n=2)])
+
         Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
@@ -599,6 +605,7 @@ class BeingItemTownMixin:
     castle = None
     player = None
     id = None
+    hero = None
 
     def __str__(self):
         c=self.char
@@ -1202,15 +1209,18 @@ class Being(BeingItemTownMixin):
         new = rv[1]
         # try: print('###', new , isinstance(B[new], Being) , B[new].alive)
         # except Exception as e: print(e)
-        if new and isinstance(B[new], Being) and B[new].alive:
-            if not attack:
-                return None
+        if new:
+            being = B.get_being(new)
+            if being and being.alive:
+                if not attack:
+                    return None
 
-            self.handle_directional_turn(dir)
-            self.attack(B[new])
-            if self.cur_move:
-                self.cur_move -= 1
-            return True, True
+                self.handle_directional_turn(dir)
+                if self.hero != being.hero or (self.is_hero and self.player!=being.player):
+                    self.attack(being)
+                if self.cur_move:
+                    self.cur_move -= 1
+                return True, True
 
         if new and B.found_type_at(Type.building, new):
             b = B[new]
@@ -1623,9 +1633,11 @@ class Archer(ArmyUnit):
         B.put(a)
         for _ in range(self.range):
             a.move(self.last_dir)
-            obj = getitem(B.get_all_obj(a.loc), -2)
-            if isinstance(obj, Being) and obj.alive and obj.hero!=hero:
-                self.hit(obj, ranged=1)
+            being = B.get_being(a.loc)
+            if being and being.alive and being.hero!=hero:
+                self.hit(being, ranged=1)
+                B.remove(being)     # shuffle on top of arrow
+                B.put(being)
                 break
             blt_put_obj(a)
             sleep(0.15)
