@@ -1053,18 +1053,14 @@ class BattleUI:
                     for hero, other in [(a,b),(b,a)]:
                         if hero.army_is_dead():
                             x = hero if hero.is_hero else other
-                            print(1)
                             x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
-                            print(2)
                             if hero.is_hero:
                                 # we don't remove if it's a castle
                                 self.B.remove(hero)
                                 hero.alive = 0
-                            print(3)
 
                             if not hero.player or hero.player.is_ai:
-                                other.xp += hero._strength
-                            print(4)
+                                other.add_xp(hero._strength)
                             return
 
 def blt_put_obj(obj):
@@ -1086,7 +1082,8 @@ class Being(BeingItemTownMixin):
     char = None
     moves = None
 
-    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?', color=None):
+    def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
+                 color=None):
         self.id, self.loc, self.board_map, self._name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
         self.char = self.char or char
         self.inv = defaultdict(int)
@@ -1319,7 +1316,11 @@ class Being(BeingItemTownMixin):
 
     def hit(self, obj, ranged=False):
         str = self.strength if not ranged else self.range_weapon_str
-        a = int(round((str * self.n)/3))
+        hero_mod = 1 
+        if self.hero:
+            hero_mod += (self.hero.level * 5)/100
+
+        a = int(round((str * self.n * hero_mod)/3))
         b = obj.health + obj.max_health*(obj.n-1)
         c = b - a
         status(f'{self} hits {obj} for {a} HP')
@@ -1392,7 +1393,9 @@ class Hero(Being):
     moves = 5
     alive = 1
     selected = 0
+    level = 1
     type = Type.hero
+    level_tiers = enumerate(500,2000,5000,10000,15000,25000,50000,100000,150000)
 
     def __init__(self, *args, player=None, army=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1428,9 +1431,15 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
+    def add_xp(self, xp):
+        old = self.xp
+        self.xp+=xp
+        for lev, xp in self.level_tiers:
+            if old < xp <= self.xp:
+                self.level = lev
+
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
-        print ("in def ai_move()")
         castles = [c for c in self.player.castles if c.board_map==self.board_map]
         for player in [p for p in players if p!=self.player]:
             for hero in [h for h in player.heroes if h.board_map==self.board_map]:
