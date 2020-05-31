@@ -165,11 +165,21 @@ class ID(Enum):
     hero1 = auto()
     hero2 = auto()
     hero3 = auto()
+    hero4 = auto()
+    hero5 = auto()
+    hero6 = auto()
+    hero7 = auto()
+    hero8 = auto()
+    hero9 = auto()
+    hero10 = auto()
+
     gold = auto()
     wood = auto()
     rock = auto()
     mercury = auto()
     sulphur = auto()
+
+hero_names = {ID.hero1:'Arcachon', ID.hero2:'Carcassonne', ID.hero3:'Troyes', ID.hero4:'Sault'}
 
 class Player:
     resources = {
@@ -700,10 +710,52 @@ class Castle(Item):
                 self.recruit_ui()
             elif k=='R':
                 self.recruit_all()
+            elif k=='H':
+                self.recruit_hero()
             elif k=='t':
                 self.troops_ui()
             elif k=='b':
                 BuildUI().go(self)
+
+    def recruit_hero(self):
+        if self.B.found_type_at(Type.hero, self.loc):
+            h = self.current_hero
+            h.talk(h, 'Cannot recruit a new hero: there is already a hero in this castle!')
+            return
+
+        lst = []
+        for id, n in hero_names.items():
+            if not Objects.get_by_id(id.value):
+                lst.append((id, n))
+
+        pl = self.player
+
+        if not lst:
+            Misc.hero.talk(Misc.hero, 'No more heroes for hire.')
+            return
+        x, y = 5, 1
+        ascii_letters = string.ascii_letters
+
+        new = []
+        for n, (id, name) in enumerate(lst):
+            new.append(f' {ascii_letters[n]}) {name}')
+
+        w = max(len(l) for l in new)
+        blt.clear_area(x, y, w+2, len(new))
+        for n, l in enumerate(new):
+            puts(x, y+n, l)
+
+        refresh()
+        ch = get_and_parse_key()
+        item_id = None
+        if ch and ch in ascii_letters:
+            try:
+                id, name = lst[string.ascii_letters.index(ch)]
+            except IndexError:
+                return
+
+            h = Hero(self.loc, self.B._map, name=name, char=Blocks.hero1_l, id=id.value, player=self.player)
+            (ai_heroes if self.player.is_ai else player_heroes).append(h)
 
     def troops_ui(self):
         i = 0
@@ -1563,9 +1615,6 @@ def puts2(x, y, text):
     _puts(x, y+HEIGHT, text)
 
 def _puts(x,y,a):
-    ish = isinstance(a,Hero)
-    if ish:
-        pass
     if isinstance(a,str):
         blt.puts(x,y,a)
     elif a._str:
@@ -1678,9 +1727,10 @@ def handle_ui(unit, hero=None):
     k = get_and_parse_key()
     puts(0,1, ' '*78)
     B = unit.B if unit.is_hero else Misc.B
-    if k=='q':
+    if not k:
+        return
+    elif k=='q':
         return 'q'
-
     elif k in 'yubnhlHL':
         if k in 'HL':
             k = k.lower()
