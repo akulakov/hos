@@ -1391,10 +1391,31 @@ def dist(a,b):
 class Spell:
     id = None
     dmg = None
+    _name = None
+
+    def __init__(self):
+        Objects.set_by_id(self.id, self)
 
 class PowerBolt(Spell):
     dmg = 1
     id = ID.power_bolt
+
+    @property
+    def name(self):
+        if self._name:
+            return self._name
+        chars = self.__class__.__name__
+        n=chars[0]
+        for c in chars[1:]:
+            if c.isupper():
+                n+=' '
+            n += c
+        return n
+
+    def cast(self):
+        pass
+
+all_spells = (PowerBolt(),)
 
 class Hero(Being):
     xp = 0
@@ -1404,6 +1425,7 @@ class Hero(Being):
     selected = 0
     level = 1
     type = Type.hero
+    mana = 0
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
 
     def __init__(self, *args, player=None, army=None, spells=None, **kwargs ):
@@ -1440,6 +1462,43 @@ class Hero(Being):
 
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
+
+    def cast_spell(self):
+        if not self.mana:
+            self.talk(self, 'Cannot cast a spell: no mana!')
+            return
+
+        lst = []
+        for id in self.spells:
+            lst.append(Objects.get_by_id(id))
+
+        pl = self.player
+
+        if not lst:
+            self.talk(self, 'No spells to cast.')
+            return
+        x, y = 5, 1
+        ascii_letters = string.ascii_letters
+
+        new = []
+        for n, spell in enumerate(lst):
+            new.append(f' {ascii_letters[n]}) {spell.name}')
+
+        w = max(len(l) for l in new)
+        blt.clear_area(x, y, w+2, len(new))
+        for n, l in enumerate(new):
+            puts(x, y+n, l)
+
+        refresh()
+        ch = get_and_parse_key()
+        item_id = None
+        if ch and ch in ascii_letters:
+            try:
+                spell = lst[string.ascii_letters.index(ch)]
+            except IndexError:
+                return
+            spell.cast()
+
 
     def add_xp(self, xp):
         old = self.xp
@@ -1747,6 +1806,7 @@ def main(load_game):
     # Misc.B.draw()
     while ok:
         for hero in [h for h in Misc.player.heroes if h.alive]:
+            hero.mana+=1
             while ok and ok!=END_MOVE and hero.alive:
                 hero.B.draw()
                 Misc.hero = hero
@@ -1763,6 +1823,7 @@ def main(load_game):
             ok=1
         for h in ai_heroes:
             if h.alive:
+                h.mana+=1
                 h.ai_move()
         for b in player_buildings + ai_buildings:
             b.available += b.growth
@@ -1827,10 +1888,13 @@ def handle_ui(unit, hero=None):
     elif k == 'o':
         name = prompt()
         Misc.hero, B = Saves().load(name)
+    elif k == 's':
+        if hero:
+            hero.cast_spell()
     elif k == 'a':
         if Misc.B == Boards.b_battle:
             return AUTO_BATTLE
-    elif k == 's':
+    elif k == 'S':
         name = prompt()
         Saves().save(Misc.B.loc, name)
         status(f'Saved game as "{name}"')
