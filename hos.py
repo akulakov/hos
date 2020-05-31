@@ -131,7 +131,6 @@ girl
 door
 bull
 cow
-funfrock
 """.split()
 noto_tiles = {k: 0xe300+n for n,k in enumerate(noto_tiles)}
 
@@ -179,7 +178,7 @@ class ID(Enum):
 
     gold = auto()
     wood = auto()
-    rock = auto()
+    ore = auto()
     mercury = auto()
     sulphur = auto()
 
@@ -189,7 +188,7 @@ class Player:
     resources = {
         ID.gold: 1000,
         ID.wood: 10,
-        ID.rock: 0,
+        ID.ore: 0,
         ID.mercury: 0,
         ID.sulphur: 0,
     }
@@ -223,17 +222,23 @@ class Type(Enum):
     pikeman = auto()
     cavalier = auto()
     archer = auto()
+    griffin = auto()
     hero = auto()
     building = auto()
 
 class Blocks:
     """All game tiles."""
     jousting_ground = '\u25ed'
-    archery_range = '\u0080'
+    archers_tower = '\u0080'
+    griffin_tower = '\u0080'
+
     cavalier_l = '\u0007'
     cavalier_r = '\u0008'
     archer_r = '\u000c'
     archer_l = '\u000b'
+    griffin_r = '\u000c'
+    griffin_l = '\u000b'
+
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
     gold = '\u009e'
@@ -269,7 +274,7 @@ class Blocks:
     rubbish = '⛁'
     cursor = '𐌏'
     hut = '△'
-    barracks = '⌂'
+    guardhouse = '⌂'
     sub_0 = '\u2080'
     sub_1 = '₁'
     sub_2 = '₂'
@@ -460,8 +465,8 @@ class Board:
                         self.put(h)
                         self.buildings.append(h)
 
-                    elif char==Blocks.barracks:
-                        a=Barracks(loc, self._map, castle)
+                    elif char==Blocks.guardhouse:
+                        a=Guardhouse(loc, self._map, castle)
                         self.put(a)
                         self.buildings.append(a)
 
@@ -932,7 +937,7 @@ class Castle(Item):
 class BuildUI:
     def go(self, castle):
         existing = (b.__class__ for b in castle.board.buildings)
-        available = [b for b in (Hut, Barracks, ArcheryRange, JoustingGround) if b not in existing]
+        available = [b for b in (Hut, Guardhouse, ArchersTower, JoustingGround) if b not in existing]
         _av = []
         pl = castle.player
         new = []
@@ -1032,7 +1037,7 @@ class BattleUI:
                         if not ok:
                             return
                         if ok==END_MOVE:
-                            u.cur_move = u.moves
+                            u.cur_move = u.speed
                             u.color=None
                             blt_put_obj(u)
                             break
@@ -1047,7 +1052,7 @@ class BattleUI:
                             u.attack(tgt)
                             B.draw(battle=1)
                             if u.cur_move==0:
-                                u.cur_move = u.moves
+                                u.cur_move = u.speed
                                 u.color=None
                                 blt_put_obj(u)
                                 break
@@ -1082,14 +1087,14 @@ class Being(BeingItemTownMixin):
     is_being = 1
     type = None
     char = None
-    moves = None
+    speed = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
                  color=None):
         self.id, self.loc, self.board_map, self._name, self.state, self.n, self.color  = id, loc, board_map, name, state, n, color
         self.char = self.char or char
         self.inv = defaultdict(int)
-        self.cur_move = self.moves
+        self.cur_move = self.speed
         if id:
             Objects.set_by_id(id, self)
         if board_map and put:
@@ -1420,7 +1425,7 @@ all_spells = (PowerBolt(),)
 class Hero(Being):
     xp = 0
     is_hero = 1
-    moves = 5
+    speed = 5
     alive = 1
     selected = 0
     level = 1
@@ -1529,13 +1534,13 @@ class Hero(Being):
                                     self.move(self.get_dir(c))
                                 sleep(0.25)
                                 self.B.draw()
-                            self.cur_move = self.moves
+                            self.cur_move = self.speed
                     else:
                         while self.cur_move:
                             self.move(self.get_dir(hero))
                             sleep(0.25)
                             self.B.draw()
-                        self.cur_move = self.moves
+                        self.cur_move = self.speed
                 else:
                     pass
                     # nothing to do, just end turn
@@ -1557,6 +1562,7 @@ IndependentArmy = Hero
 class ArmyUnit(Being):
     _name = None
     last_dir = 'l'
+    shots = None
 
     def __init__(self, *args, hero=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1576,30 +1582,40 @@ class Peasant(ArmyUnit):
     strength = 1
     defence = 1
     health = 5
-    moves = 4
+    speed = 4
     cost = 15
     char = Blocks.peasant
     type = Type.peasant
 
 class Pikeman(ArmyUnit):
-    strength = 3
-    defence = 4
-    health = 7
-    moves = 4
+    strength = 4
+    defence = 5
+    health = 10
+    speed = 4
     cost = 25
     char = Blocks.pikeman
     type = Type.pikeman
 
+class Griffin(ArmyUnit):
+    strength = 8
+    defence = 8
+    health = 25
+    speed = 6
+    cost = 200
+    char = Blocks.griffin_r
+    type = Type.griffin
+
 class Archer(ArmyUnit):
-    strength = 2
-    defence = 2
-    health = 5
-    moves = 3
+    strength = 6
+    defence = 3
+    health = 10
+    speed = 4
     cost = 30
     range_weapon_str = 1
     range = 7
     char = Blocks.archer_r
     type = Type.archer
+    shots = 12
 
     def fire(self, B, hero):
         char = Blocks.arrow_l if self.char==Blocks.archer_l else Blocks.arrow_r
@@ -1619,7 +1635,7 @@ class Cavalier(ArmyUnit):
     strength = 5
     defence = 4
     health = 9
-    moves = 7
+    speed = 7
     cost = 55
     char = Blocks.cavalier_r
     type = Type.cavalier
@@ -1670,19 +1686,26 @@ class Hut(Building):
     available = 5
     growth = 4
 
-class Barracks(Building):
-    cost = {ID.gold: 500}
+class Guardhouse(Building):
+    cost = {ID.gold: 500, ID.ore: 10}
     units = Pikeman
-    char = Blocks.barracks
-    available = 3
-    growth = 3
+    char = Blocks.guardhouse
+    available = 10
+    growth = 14
 
-class ArcheryRange(Building):
-    cost = {ID.gold: 500}
+class ArchersTower(Building):
+    cost = {ID.gold: 500, ID.wood:5, ID.ore:5}
     units = Archer
-    char = Blocks.archery_range
-    available = 3
-    growth = 3
+    char = Blocks.archers_tower
+    available = 6
+    growth = 9
+
+class GriffinTower(Building):
+    cost = {ID.gold: 1000, ID.ore:5}
+    units = Griffin
+    char = Blocks.griffin_tower
+    available = 6
+    growth = 7
 
 class JoustingGround(Building):
     cost = {ID.gold: 750, ID.wood: 5}
@@ -1817,7 +1840,7 @@ def main(load_game):
                 if ok==END_MOVE:
                     hero.selected = 0
                     blt_put_obj(hero)
-                    hero.cur_move = hero.moves
+                    hero.cur_move = hero.speed
             if not ok:
                 break
             ok=1
@@ -1986,15 +2009,15 @@ def stats(castle=None, battle=False):
     h = Misc.hero
     if battle and Misc.current_unit:
         u = Misc.current_unit
-        move, moves = u.cur_move, u.moves
+        move, speed = u.cur_move, u.speed
     elif h:
-        move, moves = h.cur_move, h.moves
+        move, speed = h.cur_move, h.speed
     res = pl.resources
     s=''
-    for r in 'gold wood rock mercury sulphur'.split():
+    for r in 'gold wood ore mercury sulphur'.split():
         id = getattr(ID, r)
         s+= f'[{r.title()}:{res.get(id)}]'
-    st = s + f' | Move {move}/{moves}'
+    st = s + f' | Move {move}/{speed}'
     x = len(st)+2
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
@@ -2098,7 +2121,7 @@ def editor(_map):
         elif k == 'e':
             brush = Blocks.blank
         elif k == 'r':
-            brush = Blocks.rock
+            brush = Blocks.ore
         elif k == 's':
             B.put(Blocks.steps_r, loc)
             brush = Blocks.steps_r
@@ -2183,7 +2206,7 @@ def editor(_map):
                 elif cmd == 'd': B.put('d', loc)     # drawing
                 elif cmd == 'R': B.put(Blocks.rabbit, loc)
                 elif cmd == 'h': B.put(Blocks.hut, loc)
-                elif cmd == 'b': B.put(Blocks.barracks, loc)
+                elif cmd == 'b': B.put(Blocks.guardhouse, loc)
 
                 elif any(c.startswith(cmd) for c in cmds):
                     continue
