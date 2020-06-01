@@ -1052,14 +1052,29 @@ class BattleUI:
 
         B.draw(battle=1)
         while 1:
+            self.cast_spell(B, a, b)
             for u in a.live_army():
-                self.handle_unit_turn(B, a, b, u)
+                rv = self.handle_unit_turn(B, a, b, u)
+                if rv==AUTO_BATTLE:
+                    break
             if self.check_for_win(a,b):
                 break
+            self.cast_spell(B, b, a)
             for u in b.live_army():
-                self.handle_unit_turn(B, b, a, u)
+                rv = self.handle_unit_turn(B, b, a, u)
+                if rv==AUTO_BATTLE:
+                    break
             if self.check_for_win(a,b):
                 break
+
+    def cast_spell(self, B, a, b):
+        if a.is_ai():
+            a.ai_cast_spell(B, b.live_army())
+        else:
+            # y = a.talk(a, 'Do you want to cast a spell?', yesno=1)
+            # if y:
+            a.cast_spell(B)
+            # handle_ui(a, only_allow=[' ','s'])
 
     def check_for_win(self, a, b):
         for hero, other in [(a,b),(b,a)]:
@@ -1082,7 +1097,7 @@ class BattleUI:
         while 1:
             if not u.alive:
                 break
-            if h.player and not h.player.is_ai:
+            if not h.is_ai():
                 u.color = 'light blue'
                 blt_put_obj(u)
                 ok = handle_ui(u, hero=h)
@@ -1096,6 +1111,7 @@ class BattleUI:
                     break
                 if ok==AUTO_BATTLE:
                     self.auto_battle(a, b)
+                    return AUTO_BATTLE
             else:
                 tgt = u.closest(hh.live_army())
                 if tgt:
@@ -1109,6 +1125,20 @@ class BattleUI:
                         u.color=None
                         blt_put_obj(u)
                         break
+
+    # def handle_unit_modifiers(self, u):
+    #     for turns, attr, mod, active in u.modifiers:
+    #     rm = []
+    #     for n, _m in enumerate(u.modifiers):
+    #         turns, attr, mod, active = _m
+    #         x = getattr(u, attr)
+    #         if turns==0:
+    #             setattr(u, attr, x-mod)
+    #             rm.append(n)
+    #         if not active:
+    #             setattr(u, attr, x+mod)
+    #         _m[0] -= 1
+
 
 def blt_put_obj(obj, loc=None):
     x,y=loc or obj.loc
@@ -1128,7 +1158,7 @@ class Being(BeingItemTownMixin):
     char = None
     speed = None
     range_weapon_str = None
-    modifier = None
+    modifiers = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
                  color=None):
@@ -1141,6 +1171,7 @@ class Being(BeingItemTownMixin):
         if board_map and put:
             self.B.put(self)
         self.max_health = self.health
+        self.modifiers = defaultdict(lambda x:1)
 
 
     def __str__(self):
@@ -1377,7 +1408,8 @@ class Being(BeingItemTownMixin):
             a = int(round((str * self.n * hero_mod)/3))
 
         b = obj.health + obj.max_health*(obj.n-1)
-        c = b - a
+        d = self.n * self.modifiers['defence']
+        c = b - a - d
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
             status(f'{obj} dies')
@@ -1473,22 +1505,28 @@ class Spell:
             loc = Loc(*get_mouse_pos())
             return B.screen_loc_to_map(loc)
 
-class ShieldSpell(Spell):
-    cost = 4
-    id = ID.shield_spell
+    def ai_cast(self, B, hero, targets):
+        self.apply(hero, choice(targets))
 
     def cast(self, B, hero):
         loc = self.select_target(B)
         if loc:
             being = B.get_being(loc)
             if being:
-                being.modifier = being.modifier or []
-                being.modifier.append((1, 'defence', 1*hero.magic_power))    # turns, defence, +2
-                status(f'{being} is magically shielded for 1 turn')
-                blt_put_obj(Blocks.shield_spell, loc)
-                sleep(0.25)
-                blt_put_obj(being, loc)
-                hero.mana -= self.cost
+                self.apply(hero, being)
+
+class ShieldSpell(Spell):
+    cost = 4
+    id = ID.shield_spell
+
+    def apply(self, hero, being):
+        loc = being.loc
+        status(f'{being} is shielded for one turn')
+        blt_put_obj(Blocks.shield_spell, loc)
+        sleep(0.25)
+        blt_put_obj(being, loc)
+        hero.mana -= self.cost
+        being.modifiers['defence'] = [1, 1*hero.magic_power]
 
 
 class PowerBolt(Spell):
@@ -1496,20 +1534,17 @@ class PowerBolt(Spell):
     cost = 4
     id = ID.power_bolt
 
-    def cast(self, B, hero):
-        loc = self.select_target(B)
-        if loc:
-            being = B.get_being(loc)
-            if being:
-                dmg = self.dmg * hero.magic_power
-                hero.hit(being, dmg=dmg)
-                status(f'{being} was hit with Power Bolt for {dmg} HP')
-                blt_put_obj(Blocks.bolt1, loc)
-                sleep(0.25)
-                blt_put_obj(Blocks.bolt2, loc)
-                sleep(0.25)
-                blt_put_obj(being, loc)
-                hero.mana -= self.cost
+    def apply(self, hero, being):
+        loc = being.loc
+        dmg = self.dmg * hero.magic_power
+        hero.hit(being, dmg=dmg)
+        status(f'{being} was hit with Power Bolt for {dmg} HP')
+        blt_put_obj(Blocks.bolt1, loc)
+        sleep(0.25)
+        blt_put_obj(Blocks.bolt2, loc)
+        sleep(0.25)
+        blt_put_obj(being, loc)
+        hero.mana -= self.cost
 
 
 all_spells = (PowerBolt(), ShieldSpell())
@@ -1561,19 +1596,27 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
-    def cast_spell(self, B):
-        if not self.mana:
-            self.talk(self, 'Cannot cast a spell: no mana!')
-            return
+    def is_ai(self):
+        if self.player and not self.player.is_ai:
+            return False
+        return True
 
+    def ai_cast_spell(self, B, targets):
+        for id in self.spells:
+            lst.append(Objects.get_by_id(id))
+        lst = [s for s in lst if s.cost>=self.mana]
+        if lst:
+            choice(lst).ai_cast(B, self, targets)
+
+    def cast_spell(self, B):
         lst = []
         for id in self.spells:
             lst.append(Objects.get_by_id(id))
+        lst = [s for s in lst if s.cost<=self.mana]
 
         pl = self.player
-
         if not lst:
-            self.talk(self, 'No spells to cast.')
+            self.talk(self, 'Cannot cast a spell: no spells or not enough mana!')
             return
         x, y = 5, 1
         ascii_letters = string.ascii_letters
@@ -1961,13 +2004,13 @@ def main(load_game):
             Objects.get_by_id(id).handle_day()
 
 
-def handle_ui(unit, hero=None):
+def handle_ui(unit, hero=None, only_allow=None):
     # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
 
     if not unit.cur_move:
         return END_MOVE
     k = None
-    while not k:
+    while not k or (only_allow and k and k not in only_allow):
         k = get_and_parse_key()
     puts(0,1, ' '*78)
     B = unit.B if unit.is_hero else Misc.B
