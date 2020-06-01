@@ -177,6 +177,7 @@ class ID(Enum):
     hero10 = auto()
 
     power_bolt = auto()
+    shield_spell = auto()
 
     gold = auto()
     wood = auto()
@@ -245,6 +246,10 @@ class Blocks:
     arrow_l = '\u20ea'
     gold = '\u009e'
     sawmill = '\u0239'
+
+    large_circle = '\u20dd'
+    shield_spell = '\u0709'
+
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -305,6 +310,7 @@ class Blocks:
     # spells
     bolt1 = '\u16ca'
     bolt2 = '\u16cb'
+    spell_select = '\u229b'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -998,15 +1004,11 @@ class BuildUI:
 
 
 AUTO_BATTLE = 11
+SAME_PLAYER = 12
+
 class BattleUI:
     def __init__(self, B):
         self.B=B
-
-    def go(self, a, b):
-        self._go(a,b)
-        a.army = pad_none(a.live_army(), 6)
-        b.army = pad_none(b.live_army(), 6)
-        Misc.B = self.B
 
     def auto_battle(self, a, b):
         a_str = a.total_strength()
@@ -1024,8 +1026,15 @@ class BattleUI:
                 u.n = n+1
         loser.army = pad_none([], 6)
 
+    def go(self, a, b):
+        self._go(a,b)
+        a.army = pad_none(a.live_army(), 6)
+        b.army = pad_none(b.live_army(), 6)
+        Misc.B = self.B
+
     def _go(self, a, b):
-        print ("in def _go()", a, b)
+        if a.is_hero: a.reset_mana()
+        if b.is_hero: b.reset_mana()
         a._strength = a.total_strength()
         b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle
@@ -1041,54 +1050,65 @@ class BattleUI:
             B.put(u, loc)
             loc = loc.mod_d(2)
 
-        hh = a if (a.player and not a.player.is_ai) else b
         B.draw(battle=1)
         while 1:
-            for h, u in [(a,u) for u in a.live_army()] + [(b,u) for u in b.live_army()]:
-                Misc.current_unit = u   # for stats()
-                while 1:
-                    if not u.alive:
-                        break
-                    if h.player and not h.player.is_ai:
-                        u.color = 'light blue'
+            for u in a.live_army():
+                self.handle_unit_turn(B, a, b, u)
+            if self.check_for_win(a,b):
+                break
+            for u in b.live_army():
+                self.handle_unit_turn(B, b, a, u)
+            if self.check_for_win(a,b):
+                break
+
+    def check_for_win(self, a, b):
+        for hero, other in [(a,b),(b,a)]:
+            if hero.army_is_dead():
+                x = hero if hero.is_hero else other
+                x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
+                if hero.is_hero:
+                    # we don't remove if it's a castle
+                    self.B.remove(hero)
+                    hero.alive = 0
+
+                if not hero.player or hero.player.is_ai:
+                    other.add_xp(hero._strength)
+                return True
+
+    def handle_unit_turn(self, B, a, b, unit):
+        h,u = a, unit
+        hh = a if (a.player and not a.player.is_ai) else b
+        Misc.current_unit = u   # for stats()
+        while 1:
+            if not u.alive:
+                break
+            if h.player and not h.player.is_ai:
+                u.color = 'light blue'
+                blt_put_obj(u)
+                ok = handle_ui(u, hero=h)
+                u.color = None
+                if not ok:
+                    return
+                if ok==END_MOVE:
+                    u.cur_move = u.speed
+                    u.color=None
+                    blt_put_obj(u)
+                    break
+                if ok==AUTO_BATTLE:
+                    self.auto_battle(a, b)
+            else:
+                tgt = u.closest(hh.live_army())
+                if tgt:
+                    u.color = 'light blue'
+                    blt_put_obj(u)
+                    sleep(0.25)
+                    u.attack(tgt)
+                    B.draw(battle=1)
+                    if u.cur_move==0:
+                        u.cur_move = u.speed
+                        u.color=None
                         blt_put_obj(u)
-                        ok = handle_ui(u, hero=h)
-                        u.color = None
-                        if not ok:
-                            return
-                        if ok==END_MOVE:
-                            u.cur_move = u.speed
-                            u.color=None
-                            blt_put_obj(u)
-                            break
-                        if ok==AUTO_BATTLE:
-                            self.auto_battle(a, b)
-                    else:
-                        tgt = u.closest(hh.live_army())
-                        if tgt:
-                            u.color = 'light blue'
-                            blt_put_obj(u)
-                            sleep(0.25)
-                            u.attack(tgt)
-                            B.draw(battle=1)
-                            if u.cur_move==0:
-                                u.cur_move = u.speed
-                                u.color=None
-                                blt_put_obj(u)
-                                break
-
-                    for hero, other in [(a,b),(b,a)]:
-                        if hero.army_is_dead():
-                            x = hero if hero.is_hero else other
-                            x.talk(x, f'{other} wins, gaining {hero._strength}XP!')     # `hero` may be a castle here
-                            if hero.is_hero:
-                                # we don't remove if it's a castle
-                                self.B.remove(hero)
-                                hero.alive = 0
-
-                            if not hero.player or hero.player.is_ai:
-                                other.add_xp(hero._strength)
-                            return
+                        break
 
 def blt_put_obj(obj, loc=None):
     x,y=loc or obj.loc
@@ -1097,7 +1117,6 @@ def blt_put_obj(obj, loc=None):
     puts(x, y, obj)
     refresh()
 
-SAME_PLAYER = 20
 
 class Being(BeingItemTownMixin):
     n = None
@@ -1109,6 +1128,7 @@ class Being(BeingItemTownMixin):
     char = None
     speed = None
     range_weapon_str = None
+    modifier = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
                  color=None):
@@ -1429,10 +1449,6 @@ class Spell:
     def __init__(self):
         Objects.set_by_id(self.id, self)
 
-class PowerBolt(Spell):
-    dmg = 5
-    id = ID.power_bolt
-
     @property
     def name(self):
         if self._name:
@@ -1445,13 +1461,44 @@ class PowerBolt(Spell):
             n += c
         return n
 
-    def cast(self, B, hero):
+    def select_target(self, B):
         x=None
         while x not in ('CLICK', ' ', blt.TK_ESCAPE):
+            B.draw()
+            loc = Loc(*get_mouse_pos())
+            puts(loc.x, loc.y, Blocks.spell_select)
+            refresh()
             x = get_and_parse_key()
         if x=='CLICK':
             loc = Loc(*get_mouse_pos())
-            loc = B.screen_loc_to_map(loc)
+            return B.screen_loc_to_map(loc)
+
+class ShieldSpell(Spell):
+    cost = 4
+    id = ID.shield_spell
+
+    def cast(self, B, hero):
+        loc = self.select_target(B)
+        if loc:
+            being = B.get_being(loc)
+            if being:
+                being.modifier = being.modifier or []
+                being.modifier.append((1, 'defence', 1*hero.magic_power))    # turns, defence, +2
+                status(f'{being} is magically shielded for 1 turn')
+                blt_put_obj(Blocks.shield_spell, loc)
+                sleep(0.25)
+                blt_put_obj(being, loc)
+                hero.mana -= self.cost
+
+
+class PowerBolt(Spell):
+    dmg = 5
+    cost = 4
+    id = ID.power_bolt
+
+    def cast(self, B, hero):
+        loc = self.select_target(B)
+        if loc:
             being = B.get_being(loc)
             if being:
                 dmg = self.dmg * hero.magic_power
@@ -1462,9 +1509,10 @@ class PowerBolt(Spell):
                 blt_put_obj(Blocks.bolt2, loc)
                 sleep(0.25)
                 blt_put_obj(being, loc)
+                hero.mana -= self.cost
 
 
-all_spells = (PowerBolt(),)
+all_spells = (PowerBolt(), ShieldSpell())
 
 class Hero(Being):
     xp = 0
@@ -1474,7 +1522,7 @@ class Hero(Being):
     selected = 0
     level = 1
     type = Type.hero
-    mana = 0
+    mana = 20
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
     magic_power = 2
 
@@ -1491,7 +1539,7 @@ class Hero(Being):
         else:
             self.army = [None]*6
         self.set_army_ownership()
-        self.spells = [ID.power_bolt] + (spells or [])
+        self.spells = [ID.power_bolt, ID.shield_spell] + (spells or [])
 
     def set_army_ownership(self):
         for u in self.army:
@@ -1556,6 +1604,9 @@ class Hero(Being):
         for lev, xp in self.level_tiers:
             if old < xp <= self.xp:
                 self.level = lev
+
+    def reset_mana(self):
+        self.mana = 20 + self.level*5
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
