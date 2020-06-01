@@ -43,6 +43,8 @@ keymap = dict(
     [ blt.TK_RIGHT, "RIGHT" ],
     [ blt.TK_LEFT, "LEFT" ],
 
+    [ blt.TK_MOUSE_LEFT, "CLICK" ],
+
     [ blt.TK_Q, 'q' ],
     [ blt.TK_W, 'w' ],
     [ blt.TK_E, 'e' ],
@@ -230,14 +232,14 @@ class Blocks:
     """All game tiles."""
     jousting_ground = '\u25ed'
     archers_tower = '\u0080'
-    griffin_tower = '\u0080'
+    griffin_tower = '\u0081'
 
     cavalier_l = '\u0007'
     cavalier_r = '\u0008'
     archer_r = '\u000c'
     archer_l = '\u000b'
     griffin_r = '\u000e'
-    griffin_l = '\u000e'
+    griffin_l = '\u000f'
 
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
@@ -299,6 +301,10 @@ class Blocks:
     list_select = '▶'
     # hero_select = '\u035c'
     hero_select = '\u2017'
+
+    # spells
+    bolt1 = '\u16ca'
+    bolt2 = '\u16cb'
 
 BLOCKING = [Blocks.rock, Type.door1, Type.blocking, Type.gate, Type.castle]
 
@@ -521,6 +527,13 @@ class Board:
     def board_2(self):
         self.load_map('2')
         Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)])
+
+    def screen_loc_to_map(self, loc):
+        x,y=loc
+        if y%2==1:
+            x-=1
+        x = int(round(x/2))
+        return Loc(x,y)
 
     def draw(self, battle=False, castle=None):
         blt.clear()
@@ -1077,11 +1090,11 @@ class BattleUI:
                                 other.add_xp(hero._strength)
                             return
 
-def blt_put_obj(obj):
-    x,y=obj.loc
+def blt_put_obj(obj, loc=None):
+    x,y=loc or obj.loc
     x = x*2 +(0 if y%2==0 else 1)
     blt.clear_area(x,y,1,1)
-    puts(x,y,obj)
+    puts(x, y, obj)
     refresh()
 
 SAME_PLAYER = 20
@@ -1095,6 +1108,7 @@ class Being(BeingItemTownMixin):
     type = None
     char = None
     speed = None
+    range_weapon_str = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
                  color=None):
@@ -1331,13 +1345,17 @@ class Being(BeingItemTownMixin):
         elif a.x<b.x: return 'l'
         elif a.x>b.x: return 'h'
 
-    def hit(self, obj, ranged=False):
-        str = self.strength if not ranged else self.range_weapon_str
-        hero_mod = 1
-        if self.hero:
-            hero_mod += (self.hero.level * 5)/100
+    def hit(self, obj, ranged=False, dmg=None):
+        if dmg:
+            a = dmg
+        else:
+            str = self.strength if not ranged else self.range_weapon_str
+            hero_mod = 1
+            if self.hero:
+                hero_mod += (self.hero.level * 5)/100
 
-        a = int(round((str * self.n * hero_mod)/3))
+            a = int(round((str * self.n * hero_mod)/3))
+
         b = obj.health + obj.max_health*(obj.n-1)
         c = b - a
         status(f'{self} hits {obj} for {a} HP')
@@ -1412,7 +1430,7 @@ class Spell:
         Objects.set_by_id(self.id, self)
 
 class PowerBolt(Spell):
-    dmg = 1
+    dmg = 5
     id = ID.power_bolt
 
     @property
@@ -1427,8 +1445,24 @@ class PowerBolt(Spell):
             n += c
         return n
 
-    def cast(self):
-        pass
+    def cast(self, B, hero):
+        x=None
+        while x not in ('CLICK', ' ', blt.TK_ESCAPE):
+            x = get_and_parse_key()
+        if x=='CLICK':
+            loc = Loc(*get_mouse_pos())
+            loc = B.screen_loc_to_map(loc)
+            being = B.get_being(loc)
+            if being:
+                dmg = self.dmg * hero.magic_power
+                hero.hit(being, dmg=dmg)
+                status(f'{being} was hit with Power Bolt for {dmg} HP')
+                blt_put_obj(Blocks.bolt1, loc)
+                sleep(0.25)
+                blt_put_obj(Blocks.bolt2, loc)
+                sleep(0.25)
+                blt_put_obj(being, loc)
+
 
 all_spells = (PowerBolt(),)
 
@@ -1442,6 +1476,7 @@ class Hero(Being):
     type = Type.hero
     mana = 0
     level_tiers = enumerate((500,2000,5000,10000,15000,25000,50000,100000,150000))
+    magic_power = 2
 
     def __init__(self, *args, player=None, army=None, spells=None, **kwargs ):
         super().__init__(*args, **kwargs)
@@ -1478,7 +1513,7 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
-    def cast_spell(self):
+    def cast_spell(self, B):
         if not self.mana:
             self.talk(self, 'Cannot cast a spell: no mana!')
             return
@@ -1512,7 +1547,7 @@ class Hero(Being):
                 spell = lst[string.ascii_letters.index(ch)]
             except IndexError:
                 return
-            spell.cast()
+            spell.cast(B, self)
 
 
     def add_xp(self, xp):
@@ -1791,7 +1826,8 @@ def get_and_parse_key():
 
 def parsekey(k):
     b=blt
-    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN,blt.TK_SHIFT,blt.TK_ESCAPE,blt.TK_UP,blt.TK_DOWN,b.TK_RIGHT,b.TK_LEFT):
+    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT, blt.TK_ESCAPE, blt.TK_UP,
+                                              blt.TK_DOWN, b.TK_RIGHT, b.TK_LEFT, b.TK_MOUSE_LEFT):
         k = keymap.get(k)
         if k and blt.state(blt.TK_SHIFT):
             k = k.upper()
@@ -1799,6 +1835,9 @@ def parsekey(k):
             if k=='/': k = '?'
             if k=='=': k = '+'
         return k
+
+def get_mouse_pos():
+    return blt.state(blt.TK_MOUSE_X), blt.state(blt.TK_MOUSE_Y)
 
 def board_setup():
     Boards.b_battle = Board(Loc(2,0), 'battle')
@@ -1820,6 +1859,7 @@ def board_setup():
 def main(load_game):
     blt.open()
     blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono.ttf, size=24")
+    blt.set("input.filter={keyboard, mouse+}")
     blt.color("white")
     blt.composition(True)
 
@@ -1853,8 +1893,6 @@ def main(load_game):
                     hero.selected = 0
                     blt_put_obj(hero)
                     hero.cur_move = hero.speed
-            if not ok:
-                break
             ok=1
         for h in ai_heroes:
             if h.alive:
@@ -1877,12 +1915,12 @@ def handle_ui(unit, hero=None):
 
     if not unit.cur_move:
         return END_MOVE
-    k = get_and_parse_key()
+    k = None
+    while not k:
+        k = get_and_parse_key()
     puts(0,1, ' '*78)
     B = unit.B if unit.is_hero else Misc.B
-    if not k:
-        return
-    elif k=='q':
+    if k=='q':
         return 'q'
     elif k in 'yubnhlHL':
         if k in 'HL':
@@ -1925,7 +1963,7 @@ def handle_ui(unit, hero=None):
         Misc.hero, B = Saves().load(name)
     elif k == 's':
         if hero:
-            hero.cast_spell()
+            hero.cast_spell(B)
     elif k == 'a':
         if Misc.B == Boards.b_battle:
             return AUTO_BATTLE
