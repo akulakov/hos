@@ -362,6 +362,9 @@ class Loc:
         if isinstance(l, Loc):
             return (self.x, self.y) == (l.x, l.y)
 
+    def __hash__(self):
+        return hash(tuple(self))
+
     def mod(self, x=0, y=0):
         new = copy(self)
         new.y += y
@@ -403,11 +406,41 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
+    def gen_graph(self):
+        self.g = {}
+        for loc, _ in self:
+            if not self.is_blocked(loc):
+                self.g[loc] = [n for n in self.neighbours(loc) if not self.is_blocked(n)
+                               and not self.get_being(loc)
+                              ]
+
+    def find_path(self, src, tgt):
+        """Greedy"""
+        self.gen_graph()
+        cur = src
+        path = [src]
+        visited = set()
+        while 1:
+            nbr = [n for n in self.g[cur] if n not in visited]
+            next = first(sorted([dist(n,b) for n in nbr]))
+            if not next:
+                break
+            path.append(next)
+            visited.add(next)
+            cur = next
+            if cur == tgt:
+                return path
+
+
     def random_empty(self):
         while 1:
             loc = choice(list(self))[0]
             if self[loc] is Blocks.blank:
                 return loc
+
+    def random_rocks(self, n=1):
+        for _ in range(n):
+            Item(Blocks.rock, '', self.random_empty(), self._map, type=Type.blocking)
 
     def clear(self):
         self.B = [mkrow() for _ in range(HEIGHT)]
@@ -576,7 +609,7 @@ class Board:
             l.extend([loc.mod_u().mod_l(), loc.mod_d().mod_l()])
         else:
             l.extend([loc.mod_u().mod_r(), loc.mod_d().mod_r()])
-        return l
+        return [loc for loc in l if chk_oob(loc)]
 
     def put(self, obj, loc=None):
         """
@@ -1040,6 +1073,7 @@ class BattleUI:
         B = Misc.B = Boards.b_battle
         B.clear()
         B.load_map('battle')
+        B.random_rocks(20)
 
         loc = B.specials[1]
         for u in a.live_army():
@@ -1053,10 +1087,12 @@ class BattleUI:
         B.draw(battle=1)
         while 1:
             self.cast_spell(B, a, b)
+            B.draw(battle=1)
             for u in a.live_army():
                 rv = self.handle_unit_turn(B, a, b, u)
                 if rv==AUTO_BATTLE:
                     break
+            self.handle_modifiers_turn(a)
             if self.check_for_win(a,b):
                 break
             self.cast_spell(B, b, a)
@@ -1064,8 +1100,18 @@ class BattleUI:
                 rv = self.handle_unit_turn(B, b, a, u)
                 if rv==AUTO_BATTLE:
                     break
+            self.handle_modifiers_turn(b)
             if self.check_for_win(a,b):
                 break
+
+    def handle_modifiers_turn(self, hero):
+        """Time-out modifiers."""
+        for u in hero.live_army():
+            for k, mod in u.modifiers.items():
+                if mod[0] <= 0:
+                    del u.modifiers[k]
+                else:
+                    mod[0] -= 1
 
     def cast_spell(self, B, a, b):
         if a.is_ai():
@@ -1088,6 +1134,8 @@ class BattleUI:
 
                 if not hero.player or hero.player.is_ai:
                     other.add_xp(hero._strength)
+                for u in other.live_army():
+                    u.modifiers = defaultdict(lambda:[1,1])
                 return True
 
     def handle_unit_turn(self, B, a, b, unit):
@@ -1114,10 +1162,19 @@ class BattleUI:
                     return AUTO_BATTLE
             else:
                 tgt = u.closest(hh.live_army())
+
                 if tgt:
                     u.color = 'light blue'
                     blt_put_obj(u)
                     sleep(0.25)
+                    path = B.find_path(u.loc, tgt.loc)
+                    if len(path)==2:
+                        u.hit(tgt)
+                    elif path:
+                        u.move(loc=first(path))
+                    else:
+                        return
+
                     u.attack(tgt)
                     B.draw(battle=1)
                     if u.cur_move==0:
@@ -1265,13 +1322,16 @@ class Being(BeingItemTownMixin):
                 return LOAD_BOARD, self.B.loc.mod(m[1],m[0])
         return 0, 0
 
-    def move(self, dir, attack=True):
+    def move(self, dir=None, attack=True, ignore_blocked=False, loc=None):
         if self.cur_move==0: return None, None
         B = self.B
-        rv = self._move(dir)
-        if rv and (rv[0] == LOAD_BOARD):
-            return rv
-        new = rv[1]
+        if dir:
+            rv = self._move(dir)
+            if rv and (rv[0] == LOAD_BOARD):
+                return rv
+            new = rv[1]
+        else:
+            new = loc
         # try: print('###', new , isinstance(B[new], Being) , B[new].alive)
         # except Exception as e: print(e)
         if new:
@@ -1306,7 +1366,7 @@ class Being(BeingItemTownMixin):
                 BattleUI(B).go(self, cas)
             return None, None
 
-        if new and B.is_blocked(new):
+        if new and not ignore_blocked and B.is_blocked(new):
             new = None
 
         if new:
@@ -1396,7 +1456,7 @@ class Being(BeingItemTownMixin):
         elif a.x<b.x: return 'l'
         elif a.x>b.x: return 'h'
 
-    def hit(self, obj, ranged=False, dmg=None):
+    def hit(self, obj, ranged=False, dmg=None, mod=1):
         if dmg:
             a = dmg
         else:
@@ -1405,7 +1465,7 @@ class Being(BeingItemTownMixin):
             if self.hero:
                 hero_mod += (self.hero.level * 5)/100
 
-            a = int(round((str * self.n * hero_mod)/3))
+            a = int(round((str * self.n * hero_mod * mod)/3))
 
         b = obj.health + obj.max_health*(obj.n-1)
         d = self.n * self.modifiers['defense'][1]
@@ -1471,7 +1531,7 @@ def pad_none(lst, size):
 def dist(a,b):
     a = getattr(a,'loc',a)
     b = getattr(b,'loc',b)
-    return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2)
+    return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2 + (a.x-b.x)*(a.y-b.y))
 
 class Spell:
     id = None
@@ -1638,9 +1698,15 @@ class Hero(Being):
         if ch and ch in ascii_letters:
             try:
                 spell = lst[string.ascii_letters.index(ch)]
+                print("spell", spell)
             except IndexError:
+                print("IndexError, drawing board")
+                B.draw()
                 return
             spell.cast(B, self)
+        if not ch:
+            print("no `ch`, drawing board")
+            B.draw()
 
 
     def add_xp(self, xp):
@@ -1762,8 +1828,11 @@ class Archer(ArmyUnit):
         char = Blocks.arrow_l if self.char==Blocks.archer_l else Blocks.arrow_r
         a = Arrow(char, '', loc=self.loc)
         B.put(a)
+        mod = 1
         for _ in range(self.range):
-            a.move(self.last_dir)
+            a.move(self.last_dir, ignore_blocked=True)
+            if B.found_type_at(Type.blocking, a.loc):
+                mod = 0.5
             being = B.get_being(a.loc)
             if being and being.alive and being.hero!=hero:
                 self.hit(being, ranged=1)
