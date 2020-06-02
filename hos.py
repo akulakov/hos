@@ -406,25 +406,28 @@ class Board:
             for x, cell in enumerate(row):
                 yield Loc(x,y), cell
 
-    def gen_graph(self):
+    def gen_graph(self, tgt):
         self.g = {}
         for loc, _ in self:
             if not self.is_blocked(loc):
-                self.g[loc] = [n for n in self.neighbours(loc) if not self.is_blocked(n)
-                               and not self.get_being(loc)
+                self.g[loc] = [n for n in self.neighbours(loc)
+                               if (not self.is_blocked(n) and not self.get_being(n))
+                                   or n==tgt
                               ]
 
     def find_path(self, src, tgt):
         """Greedy"""
-        self.gen_graph()
+        self.gen_graph(tgt)
         cur = src
         path = [src]
-        visited = set()
+        visited = set([src])
         while 1:
             nbr = [n for n in self.g[cur] if n not in visited]
-            next = first(sorted([dist(n,b) for n in nbr]))
+            print("nbr", nbr)
+            next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             if not next:
                 break
+            next = next[2]
             path.append(next)
             visited.add(next)
             cur = next
@@ -1107,11 +1110,14 @@ class BattleUI:
     def handle_modifiers_turn(self, hero):
         """Time-out modifiers."""
         for u in hero.live_army():
+            rm = []
             for k, mod in u.modifiers.items():
                 if mod[0] <= 0:
-                    del u.modifiers[k]
+                    rm.append(k)
                 else:
                     mod[0] -= 1
+            for k in rm:
+                del u.modifiers[k]
 
     def cast_spell(self, B, a, b):
         if a.is_ai():
@@ -1146,7 +1152,7 @@ class BattleUI:
             if not u.alive:
                 break
             if not h.is_ai():
-                u.color = 'light blue'
+                u.color = 'lighter blue'
                 blt_put_obj(u)
                 ok = handle_ui(u, hero=h)
                 u.color = None
@@ -1164,7 +1170,7 @@ class BattleUI:
                 tgt = u.closest(hh.live_army())
 
                 if tgt:
-                    u.color = 'light blue'
+                    u.color = 'lighter blue'
                     blt_put_obj(u)
                     sleep(0.25)
                     path = B.find_path(u.loc, tgt.loc)
@@ -1322,7 +1328,7 @@ class Being(BeingItemTownMixin):
                 return LOAD_BOARD, self.B.loc.mod(m[1],m[0])
         return 0, 0
 
-    def move(self, dir=None, attack=True, ignore_blocked=False, loc=None):
+    def move(self, dir=None, attack=True, loc=None):
         if self.cur_move==0: return None, None
         B = self.B
         if dir:
@@ -1366,7 +1372,8 @@ class Being(BeingItemTownMixin):
                 BattleUI(B).go(self, cas)
             return None, None
 
-        if new and not ignore_blocked and B.is_blocked(new):
+        # if new and not ignore_blocked and B.is_blocked(new):
+        if new and B.is_blocked(new):
             new = None
 
         if new:
@@ -1830,12 +1837,12 @@ class Archer(ArmyUnit):
         B.put(a)
         mod = 1
         for _ in range(self.range):
-            a.move(self.last_dir, ignore_blocked=True)
+            a.move(self.last_dir)
             if B.found_type_at(Type.blocking, a.loc):
                 mod = 0.5
             being = B.get_being(a.loc)
             if being and being.alive and being.hero!=hero:
-                self.hit(being, ranged=1)
+                self.hit(being, ranged=1, mod=mod)
                 B.remove(being)     # shuffle on top of arrow
                 B.put(being)
                 break
@@ -2037,13 +2044,13 @@ def main(load_game):
     Misc.is_game = 1
 
     Misc.player = Player('green', False, color='green')
-    Misc.blue_player = Player('blue', True, color='blue')
+    Misc.blue_player = Player('blue', True, color='lighter blue')
     players.extend([Misc.player, Misc.blue_player])
 
     ok=1
     board_setup()
+
     hero = Misc.hero = Objects.hero1
-    # Misc.B.draw()
     while ok:
         for hero in [h for h in Misc.player.heroes if h.alive]:
             hero.mana+=1
