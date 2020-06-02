@@ -1171,7 +1171,7 @@ class Being(BeingItemTownMixin):
         if board_map and put:
             self.B.put(self)
         self.max_health = self.health
-        self.modifiers = defaultdict(lambda x:1)
+        self.modifiers = defaultdict(lambda:[1,1])
 
 
     def __str__(self):
@@ -1408,7 +1408,7 @@ class Being(BeingItemTownMixin):
             a = int(round((str * self.n * hero_mod)/3))
 
         b = obj.health + obj.max_health*(obj.n-1)
-        d = self.n * self.modifiers['defence']
+        d = self.n * self.modifiers['defense'][1]
         c = b - a - d
         status(f'{self} hits {obj} for {a} HP')
         if c <= 0:
@@ -1509,6 +1509,7 @@ class Spell:
         self.apply(hero, choice(targets))
 
     def cast(self, B, hero):
+        B.draw()
         loc = self.select_target(B)
         if loc:
             being = B.get_being(loc)
@@ -1526,7 +1527,7 @@ class ShieldSpell(Spell):
         sleep(0.25)
         blt_put_obj(being, loc)
         hero.mana -= self.cost
-        being.modifiers['defence'] = [1, 1*hero.magic_power]
+        being.modifiers['defense'] = [1, 1*hero.magic_power]
 
 
 class PowerBolt(Spell):
@@ -1602,6 +1603,7 @@ class Hero(Being):
         return True
 
     def ai_cast_spell(self, B, targets):
+        lst = []
         for id in self.spells:
             lst.append(Objects.get_by_id(id))
         lst = [s for s in lst if s.cost>=self.mana]
@@ -1719,7 +1721,7 @@ class ArmyUnit(Being):
 
 class Peasant(ArmyUnit):
     strength = 1
-    defence = 1
+    defense = 1
     health = 5
     speed = 4
     cost = 15
@@ -1728,7 +1730,7 @@ class Peasant(ArmyUnit):
 
 class Pikeman(ArmyUnit):
     strength = 4
-    defence = 5
+    defense = 5
     health = 10
     speed = 4
     cost = 25
@@ -1737,7 +1739,7 @@ class Pikeman(ArmyUnit):
 
 class Griffin(ArmyUnit):
     strength = 8
-    defence = 8
+    defense = 8
     health = 25
     speed = 6
     cost = 200
@@ -1746,7 +1748,7 @@ class Griffin(ArmyUnit):
 
 class Archer(ArmyUnit):
     strength = 6
-    defence = 3
+    defense = 3
     health = 10
     speed = 4
     cost = 30
@@ -1774,7 +1776,7 @@ class Archer(ArmyUnit):
 
 class Cavalier(ArmyUnit):
     strength = 5
-    defence = 4
+    defense = 4
     health = 9
     speed = 7
     cost = 55
