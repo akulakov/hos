@@ -415,15 +415,17 @@ class Board:
                                    or n==tgt
                               ]
 
+    def next_move_to(self, src, tgt):
+        return first(self.find_path(src, tgt))
+
     def find_path(self, src, tgt):
         """Greedy"""
         self.gen_graph(tgt)
         cur = src
-        path = [src]
+        path = []
         visited = set([src])
         while 1:
             nbr = [n for n in self.g[cur] if n not in visited]
-            print("nbr", nbr)
             next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             if not next:
                 break
@@ -433,6 +435,7 @@ class Board:
             cur = next
             if cur == tgt:
                 return path
+        return []
 
 
     def random_empty(self):
@@ -1174,7 +1177,7 @@ class BattleUI:
                     blt_put_obj(u)
                     sleep(0.25)
                     path = B.find_path(u.loc, tgt.loc)
-                    if len(path)==2:
+                    if len(path)==1:
                         u.hit(tgt)
                     elif path:
                         u.move(loc=first(path))
@@ -1346,7 +1349,7 @@ class Being(BeingItemTownMixin):
                 if not attack:
                     return None
 
-                self.handle_directional_turn(dir)
+                self.handle_directional_turn(dir, new)
                 if self.hero != being.hero or (self.is_hero and self.player!=being.player):
                     self.attack(being)
                 if self.cur_move:
@@ -1358,7 +1361,7 @@ class Being(BeingItemTownMixin):
             b.set_player(self.player)
 
         if new and B.found_type_at(Type.castle, new):
-            cas = B[new]
+            cas = Objects.get_by_id(B[new])
             if cas.player==self.player or not cas.live_army():
                 cas.set_player(self.player)
                 if self.player.is_human:
@@ -1380,25 +1383,28 @@ class Being(BeingItemTownMixin):
             B.remove(self)
             if new[0] == LOAD_BOARD or new[0] is None:
                 return new
+            self.handle_directional_turn(dir, new)
             self.loc = new
             self.put(new)
             refresh()
             if self.cur_move:
                 self.cur_move -= 1
-            self.handle_directional_turn(dir)
             if self.is_hero and self.player and not self.player.is_ai:
                 self.handle_player_move(new)
 
             return True, True
         return None, None
 
-    def handle_directional_turn(self, dir):
+    def handle_directional_turn(self, dir, loc):
         """Turn char based on which way it's facing."""
         if isinstance(self, (ArmyUnit, Hero)):
             name = self.__class__.__name__.lower()
             if self.is_hero: name = name+'1'
             if hasattr(Blocks, name+'_r'):
-                if dir in 'hyb':
+                to_r = False
+                if loc:
+                    to_r = loc.x>self.loc.x or (loc.x==self.loc.x and loc.y%2==1)
+                if dir and dir in 'hyb' or to_r:
                     self.char = getattr(Blocks, name+'_l')
                 else:
                     self.char = getattr(Blocks, name+'_r')
@@ -1712,7 +1718,6 @@ class Hero(Being):
                 return
             spell.cast(B, self)
         if not ch:
-            print("no `ch`, drawing board")
             B.draw()
 
 
@@ -1728,6 +1733,7 @@ class Hero(Being):
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
+        B = self.B
         castles = [c for c in self.player.castles if c.board_map==self.board_map]
         for player in [p for p in players if p!=self.player]:
             for hero in [h for h in player.heroes if h.board_map==self.board_map]:
@@ -1736,24 +1742,16 @@ class Hero(Being):
                     if self.total_strength()*mod < hero.total_strength():
                         c = self.closest(castles)
                         if c:
-                            while self.cur_move:
-                                if dist(self, c)==0:
-                                    # stay in safety
-                                    self.cur_move=0
-                                elif dist(self, c)==1:
-                                    self.B.remove(self)
-                                    self.put(c.loc)
-                                    self.cur_move=0
-                                else:
-                                    self.move(self.get_dir(c))
+                            while self.cur_move and self.loc!=c.loc:
+                                self.move(loc=B.next_move_to(self.loc, c.loc))
                                 sleep(0.25)
-                                self.B.draw()
+                                B.draw()
                             self.cur_move = self.speed
                     else:
-                        while self.cur_move:
-                            self.move(self.get_dir(hero))
+                        while self.cur_move and self.loc!=hero.loc:
+                            self.move(loc=B.next_move_to(self.loc, hero.loc))
                             sleep(0.25)
-                            self.B.draw()
+                            B.draw()
                         self.cur_move = self.speed
                 else:
                     pass
