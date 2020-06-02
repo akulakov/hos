@@ -416,7 +416,12 @@ class Board:
                               ]
 
     def next_move_to(self, src, tgt):
-        return first(self.find_path(src, tgt))
+        p = self.find_path(src, tgt)
+        for n,nbr in self.g.items():
+            print(n)
+            print(nbr)
+        print("p", p)
+        return first(p)
 
     def find_path(self, src, tgt):
         """Greedy"""
@@ -425,6 +430,7 @@ class Board:
         path = []
         visited = set([src])
         while 1:
+            print("cur", cur)
             nbr = [n for n in self.g[cur] if n not in visited]
             next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             if not next:
@@ -549,14 +555,17 @@ class Board:
 
     def board_1(self):
         self.load_map('1')
-        Hero(self.specials[1], '1', name='Arcachon', char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
-             army=[Archer(n=20), Pikeman(n=5), Griffin(n=2)])
+        Hero(self.specials[1], '1', name=hero_names[ID.hero1], char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
+             army=[Archer(n=1), Pikeman(n=1), Griffin(n=0)])
 
-        Hero(self.specials[5], '1', name='Troyes', char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
+        Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
-        Hero(self.specials[4], '1', name='Carcassonne', char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
+        Hero(self.specials[4], '1', name=hero_names[ID.hero2], char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
              army=[Pikeman(n=1), Pikeman(n=1)])
+
+        Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
+             army=[Pikeman(n=2), Peasant(n=5)])
 
         g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100)
         self.put(g)
@@ -757,6 +766,7 @@ class Arrow(Item):
 class Castle(Item):
     weekly_income = 250
     current_hero = None
+    type = Type.castle
 
     def __init__(self, *args, player=None, army=None, **kwargs):
         super().__init__(Blocks.door, *args, **kwargs)
@@ -1670,6 +1680,9 @@ class Hero(Being):
     def __repr__(self):
         return f'<H: {self.name} ({self.player})>'
 
+    def in_castle(self):
+        self.B.found_type_at(Type.castle, self.loc)
+
     def is_ai(self):
         if self.player and not self.player.is_ai:
             return False
@@ -1733,26 +1746,30 @@ class Hero(Being):
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
+        print ("in def ai_move()")
         B = self.B
-        castles = [c for c in self.player.castles if c.board_map==self.board_map]
+        castles = [c for c in self.player.castles if c.board_map==self.board_map and not B.get_being(c.loc)]
         for player in [p for p in players if p!=self.player]:
             for hero in [h for h in player.heroes if h.board_map==self.board_map]:
                 if dist(self.loc, hero.loc) < 7:
                     mod = 1.3   # don't be a wuss
+                    dst = None
                     if self.total_strength()*mod < hero.total_strength():
-                        c = self.closest(castles)
-                        if c:
-                            while self.cur_move and self.loc!=c.loc:
-                                self.move(loc=B.next_move_to(self.loc, c.loc))
-                                sleep(0.25)
-                                B.draw()
-                            self.cur_move = self.speed
+                        if not self.in_castle():
+                            dst = self.closest(castles)
                     else:
-                        while self.cur_move and self.loc!=hero.loc:
-                            self.move(loc=B.next_move_to(self.loc, hero.loc))
-                            sleep(0.25)
-                            B.draw()
-                        self.cur_move = self.speed
+                        dst = hero
+                    print("dst", dst)
+
+                    while dst and self.cur_move and self.loc!=dst.loc and self.alive:
+                        print("dst,self.cur_move,self.loc,dst.loc,self.alive", dst,self.cur_move,self.loc,dst.loc,self.alive)
+                        loc = B.next_move_to(self.loc, dst.loc)
+                        if not loc: break
+                        print("loc", loc)
+                        self.move(loc=loc)
+                        sleep(0.25)
+                        B.draw()
+                    self.cur_move = self.speed
                 else:
                     pass
                     # nothing to do, just end turn
@@ -2287,7 +2304,7 @@ def prompt():
 
 def editor(_map):
     blt.open()
-    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono2.ttf, size=24")
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono.ttf, size=20")
     blt.color("white")
     blt.composition(True)
 
@@ -2462,7 +2479,6 @@ def editor(_map):
         x = loc.x*2 + (0 if loc.y%2==0 else 1)
         blt.clear_area(x,loc.y,1,1)
         puts(x, loc.y, Blocks.cursor)
-        refresh()
         if brush==Blocks.blank:
             tool = 'eraser'
         elif brush==Blocks.rock:
@@ -2472,8 +2488,9 @@ def editor(_map):
         else:
             tool = brush
         puts(73,1, tool)
-        puts(0 if loc.x>40 else 70,
+        puts(0 if loc.x>20 else 35,
              0, str(loc))
+        refresh()
         if written:
             puts(65,2, 'map written')
             written=0
