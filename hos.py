@@ -185,6 +185,8 @@ class ID(Enum):
     mercury = auto()
     sulphur = auto()
 
+    raised_platform = auto()
+
 hero_names = {ID.hero1:'Arcachon', ID.hero2:'Carcassonne', ID.hero3:'Troyes', ID.hero4:'Sault'}
 
 class Player:
@@ -228,6 +230,7 @@ class Type(Enum):
     griffin = auto()
     hero = auto()
     building = auto()
+    raised_platform = auto()
 
 class Blocks:
     """All game tiles."""
@@ -249,6 +252,7 @@ class Blocks:
 
     large_circle = '\u20dd'
     shield_spell = '\u0709'
+    button_platform = '\u20e3'
 
     blank = '.'
     rock = '█'
@@ -561,11 +565,11 @@ class Board:
         Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
              army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
-        Hero(self.specials[4], '1', name=hero_names[ID.hero2], char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
-             army=[Pikeman(n=1), Pikeman(n=1)])
+        # Hero(self.specials[4], '1', name=hero_names[ID.hero2], char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
+        #      army=[Pikeman(n=1), Pikeman(n=1)])
 
-        Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
-             army=[Pikeman(n=2), Peasant(n=5)])
+        # Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
+        #      army=[Pikeman(n=2), Peasant(n=5)])
 
         g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100)
         self.put(g)
@@ -581,6 +585,13 @@ class Board:
     def board_2(self):
         self.load_map('2')
         Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)])
+
+    def board_siege(self):
+        self.load_map('siege')
+        sp = self.specials
+        RaisedPlatform(Blocks.button_platform, '', sp[3], self._map)
+        Gate(sp[8], name='Gate', board_map=self._map)
+        Gate(sp[9], name='Gate', board_map=self._map)
 
     def screen_loc_to_map(self, loc):
         x,y=loc
@@ -763,14 +774,26 @@ class ResourceItem(Item):
 class Arrow(Item):
     char = Blocks.arrow_l
 
+class RaisedPlatform(Item):
+    char = Blocks.button_platform
+    id = ID.raised_platform
+
+class TownType:
+    pass
+
+class CastleTownType(TownType):
+    pass
+
 class Castle(Item):
     weekly_income = 250
     current_hero = None
     type = Type.castle
+    town_type = None
 
-    def __init__(self, *args, player=None, army=None, **kwargs):
+    def __init__(self, *args, player=None, army=None, town_type=None, **kwargs):
         super().__init__(Blocks.door, *args, **kwargs)
         self.army = pad_none(army or [], 6)
+        self.town_type = town_type
         self.set_player(player)
         if player:
             player._castles.append(self.id)
@@ -783,6 +806,12 @@ class Castle(Item):
 
     def __repr__(self):
         return f'<C: {self.name}>'
+
+    def is_ai(self):
+        return not self.player or self.player.is_ai
+
+    def ai_cast_spell(self, *args, **kwargs):
+        pass
 
     def handle_day(self):
         if self.player:
@@ -1088,8 +1117,11 @@ class BattleUI:
         b._strength = b.total_strength()
         B = Misc.B = Boards.b_battle
         B.clear()
-        B.load_map('battle')
-        B.random_rocks(20)
+        if b.type == Type.castle:
+            B.board_siege()
+        else:
+            B.random_rocks(20)
+            B.load_map('battle')
 
         loc = B.specials[1]
         for u in a.live_army():
@@ -1548,6 +1580,12 @@ class Being(BeingItemTownMixin):
         return not self.alive
 
 
+class Gate(Being):
+    """Being because it has HP and can be attacked."""
+    health = 15
+    char = Blocks.door
+
+
 def pad_none(lst, size):
     return lst + [None]*(size-len(lst))
 
@@ -1759,13 +1797,10 @@ class Hero(Being):
                             dst = self.closest(castles)
                     else:
                         dst = hero
-                    print("dst", dst)
 
                     while dst and self.cur_move and self.loc!=dst.loc and self.alive:
-                        print("dst,self.cur_move,self.loc,dst.loc,self.alive", dst,self.cur_move,self.loc,dst.loc,self.alive)
                         loc = B.next_move_to(self.loc, dst.loc)
                         if not loc: break
-                        print("loc", loc)
                         self.move(loc=loc)
                         sleep(0.25)
                         B.draw()
