@@ -342,10 +342,16 @@ def last(x):
     x=tuple(x)
     return x[-1] if x else None
 
-def chk_oob(loc, y=0, x=0):
-    return 0 <= loc.y+y <= HEIGHT-1 and 0 <= loc.x+x <= WIDTH-1
+def chk_oob(loc, x=0, y=0):
+    return _chk_oob(loc,x,y)[0]
 
-def chk_b_oob(loc, y=0, x=0):
+def _chk_oob(loc, x=0, y=0):
+    """Returns OOB, and also which axis is OOB (returns False for OOB, True for ok)."""
+    Y, X = (0 <= loc.y+y <= HEIGHT-1,
+            0 <= loc.x+x <= WIDTH-1)
+    return X and Y, X, Y
+
+def chk_b_oob(loc, x=0, y=0):
     h = len(board_grid)
     w = len(board_grid[0])
     newx, newy = loc.x+x, loc.y+y
@@ -563,10 +569,10 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name=hero_names[ID.hero1], char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
-             army=[Archer(n=1), Pikeman(n=1), Griffin(n=0)])
+             army=[Archer(n=5), Pikeman(n=5), Griffin(n=2)])
 
-        Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
-             army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
+        # Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
+             # army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
 
         # Hero(self.specials[4], '1', name=hero_names[ID.hero2], char=Blocks.hero1_l, id=ID.hero2, player=Misc.blue_player,
         #      army=[Pikeman(n=1), Pikeman(n=1)])
@@ -1376,12 +1382,26 @@ class Being(BeingItemTownMixin):
             mx=0
         if mx==-1 and my and self.loc.y%2==1:
             mx=0
-        m = my,mx
-        if chk_oob(self.loc, *m):
-            return True, self.loc.mod(m[1],m[0])
+        m = mx,my
+
+        # Here if for example we're going in down-right dir, and we're OOB in downwards direction, we want to switch to
+        # the board below; if going in the same dir but we're OOB only in rightward dir, we want to switch to the board
+        # to the right. If OOB in both dirs, go to the board to the down-right dir.
+        ok, X_ok, Y_ok = _chk_oob(self.loc, *m)
+        print("ok,X_ok,Y_ok", ok,X_ok,Y_ok)
+        if ok:
+            return True, self.loc.mod(*m)
         else:
-            if chk_b_oob(self.B.loc, *m):
-                return LOAD_BOARD, self.B.loc.mod(m[1],m[0])
+            if X_ok: mx = 0
+            if Y_ok: my = 0
+            if chk_b_oob(self.B.loc, mx, my):
+                if Y_ok:
+                    x = 0 if mx==1 else (WIDTH-1)
+                if X_ok:
+                    y = 0 if my==1 else (HEIGHT-1)
+                self.loc = self.loc.mod()
+
+                return LOAD_BOARD, self.B.loc.mod(mx, my)
         return 0, 0
 
     def move(self, dir=None, attack=True, loc=None):
@@ -2181,6 +2201,7 @@ def handle_ui(unit, hero=None, only_allow=None):
         unit.last_dir = k
         if rv[0] == LOAD_BOARD:
             loc = rv[1]
+            print("loc", loc)
             x, y = unit.loc
             if k=='l': x = 0
             if k=='h': x = 37
@@ -2189,6 +2210,9 @@ def handle_ui(unit, hero=None, only_allow=None):
 
             # ugly but....
             p_loc = Loc(x, y)
+            print("p_loc", p_loc)
+            print("chk_b_oob(loc)", chk_b_oob(loc))
+            print("board_grid[loc.y][loc.x]", board_grid[loc.y][loc.x])
             if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
                 Misc.B = unit.move_to_board(Boards.get_by_loc(loc), loc=p_loc)
         stats()
@@ -2307,7 +2331,7 @@ def stats(castle=None, battle=False):
     for r in 'gold wood ore mercury sulphur'.split():
         id = getattr(ID, r)
         s+= f'[{r.title()}:{res.get(id)}]'
-    st = s + f' | Move {move}/{speed}'
+    st = s + f' | Move {move}/{speed} | {Misc.B._map}'
     x = len(st)+2
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
