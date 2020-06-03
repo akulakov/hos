@@ -165,6 +165,9 @@ class ID(Enum):
     castle1 = auto()
     castle2 = auto()
     castle3 = auto()
+    castle4 = auto()
+    castle5 = auto()
+
     hero1 = auto()
     hero2 = auto()
     hero3 = auto()
@@ -585,6 +588,14 @@ class Board:
     def board_2(self):
         self.load_map('2')
         Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)])
+
+    def board_3(self):
+        self.load_map('3')
+        Castle('Castle 4', self.specials[1], self._map, id=ID.castle4, player=Misc.blue_player, army=[Peasant(n=5)])
+
+    def board_4(self):
+        self.load_map('4')
+        Castle('Castle 5', self.specials[1], self._map, id=ID.castle5, player=Misc.blue_player, army=[Pikeman(n=8)])
 
     def board_siege(self):
         self.load_map('siege')
@@ -2069,11 +2080,18 @@ def board_setup():
     Boards.b_1.board_1()
     Boards.b_2 = Board(Loc(1,2), '2')
     Boards.b_2.board_2()
+
+    Boards.b_3 = Board(Loc(0,3), '3')
+    Boards.b_3.board_3()
+    Boards.b_4 = Board(Loc(1,3), '4')
+    Boards.b_4.board_4()
+
     board_grid[:] = [
         # 0 means no board
-        ['town_ui', 0, 'battle'],
-        [0,0,0],
-        ['1', '2', 0],
+        ['town_ui', None, 'battle'],
+        [None,None,None],
+        ['1', '2', None],
+        ['3', '4', None],
     ]
     Misc.B = Boards.b_1
 
@@ -2339,7 +2357,7 @@ def prompt():
 
 def editor(_map):
     blt.open()
-    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Little Adventure'; font: FreeMono.ttf, size=20")
+    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Editor'; font: FreeMono.ttf, size=20")
     blt.color("white")
     blt.composition(True)
 
@@ -2347,7 +2365,6 @@ def editor(_map):
     # blt.set("U+E300: fontawesome-webfont.ttf, size=16x16, spacing=3x2, codepage=fontawesome-codepage.txt")
     # blt.set("U+E300: fontello.ttf, size=16x16, spacing=3x2, codepage=cp.txt")
     blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
-    blt.set("U+E400: FreeMono2.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")           # GNU
 
     blt.clear()
     Misc.is_game = 0
