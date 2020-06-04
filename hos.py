@@ -1272,6 +1272,9 @@ def blt_put_obj(obj, loc=None):
     puts(x, y, obj)
     refresh()
 
+class LoadBoard:
+    def __init__(self, new, b_new):
+        self.new, self.b_new = new, b_new
 
 class Being(BeingItemTownMixin):
     n = None
@@ -1376,7 +1379,6 @@ class Being(BeingItemTownMixin):
 
 
     def _move(self, dir):
-        # m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
         my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[dir]
         if mx==1 and my and self.loc.y%2==0:
             mx=0
@@ -1387,21 +1389,20 @@ class Being(BeingItemTownMixin):
         # Here if for example we're going in down-right dir, and we're OOB in downwards direction, we want to switch to
         # the board below; if going in the same dir but we're OOB only in rightward dir, we want to switch to the board
         # to the right. If OOB in both dirs, go to the board to the down-right dir.
-        ok, X_ok, Y_ok = _chk_oob(self.loc, *m)
-        print("ok,X_ok,Y_ok", ok,X_ok,Y_ok)
+        ok, keepX, keepY = _chk_oob(self.loc, *m)
         if ok:
             return True, self.loc.mod(*m)
         else:
-            if X_ok: mx = 0
-            if Y_ok: my = 0
+            if keepX: mx = 0
+            if keepY: my = 0
             if chk_b_oob(self.B.loc, mx, my):
-                if Y_ok:
+                x, y = self.loc.mod(mx, my)
+                if keepY:
                     x = 0 if mx==1 else (WIDTH-1)
-                if X_ok:
+                if keepX:
                     y = 0 if my==1 else (HEIGHT-1)
-                self.loc = self.loc.mod()
 
-                return LOAD_BOARD, self.B.loc.mod(mx, my)
+                return LoadBoard(Loc(x,y), self.B.loc.mod(mx,my))
         return 0, 0
 
     def move(self, dir=None, attack=True, loc=None):
@@ -1409,7 +1410,7 @@ class Being(BeingItemTownMixin):
         B = self.B
         if dir:
             rv = self._move(dir)
-            if rv and (rv[0] == LOAD_BOARD):
+            if isinstance(rv, LoadBoard):
                 return rv
             new = rv[1]
         else:
@@ -1454,7 +1455,8 @@ class Being(BeingItemTownMixin):
 
         if new:
             B.remove(self)
-            if new[0] == LOAD_BOARD or new[0] is None:
+            # if new[0] == LOAD_BOARD or new[0] is None:
+            if new[0] is None:
                 return new
             self.handle_directional_turn(dir, new)
             self.loc = new
@@ -2190,7 +2192,7 @@ def handle_ui(unit, hero=None, only_allow=None):
                 rv = unit.move(k)
                 if not rv:
                     return END_MOVE
-                if rv[0] == LOAD_BOARD:
+                if isinstance(rv, LoadBoard):
                     break
         else:
             rv = unit.move(k)
@@ -2199,22 +2201,10 @@ def handle_ui(unit, hero=None, only_allow=None):
                 return END_MOVE
 
         unit.last_dir = k
-        if rv[0] == LOAD_BOARD:
-            loc = rv[1]
-            print("loc", loc)
-            x, y = unit.loc
-            if k=='l': x = 0
-            if k=='h': x = 37
-            if k in 'yu': y = 15
-            if k in 'bn': y = 0
-
-            # ugly but....
-            p_loc = Loc(x, y)
-            print("p_loc", p_loc)
-            print("chk_b_oob(loc)", chk_b_oob(loc))
-            print("board_grid[loc.y][loc.x]", board_grid[loc.y][loc.x])
+        if isinstance(rv, LoadBoard):
+            loc = rv.b_new
             if chk_b_oob(loc) and board_grid[loc.y][loc.x]:
-                Misc.B = unit.move_to_board(Boards.get_by_loc(loc), loc=p_loc)
+                Misc.B = unit.move_to_board(Boards.get_by_loc(loc), loc=rv.new)
         stats()
 
     elif k == '.':
@@ -2240,7 +2230,6 @@ def handle_ui(unit, hero=None, only_allow=None):
         status(str(unit.loc))
     elif k == ' ':
         unit.cur_move=0
-        # unit.action()
     elif k == '5' and DBG:
         k = get_and_parse_key()
         k2 = get_and_parse_key()
