@@ -3,7 +3,7 @@ from bearlibterminal import terminal as blt
 import os
 import sys
 import math
-from random import choice
+from random import choice, randrange
 from collections import defaultdict
 from textwrap import wrap
 from time import sleep
@@ -263,6 +263,8 @@ class Blocks:
     shield_spell = '\u0709'
     button_platform = '\u20e3'
 
+    bricks = '\u2687'
+
     blank = '.'
     rock = '█'
     platform = '⎽'
@@ -272,6 +274,8 @@ class Blocks:
     fountain = '␣'
     tree1 = noto_tiles['tree1']
     tree2 = noto_tiles['tree2']
+    tree1 = '\u2689'
+    tree2 = '\u268a'
     rock2 = '▅'
     rock3 = '░'
     cactus = noto_tiles['cactus']
@@ -558,7 +562,18 @@ class Board:
                         Item(char, 'books', loc, self._map)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
-                        Item(char, 'tree', loc, self._map)
+                        col = '#ff33%s%s' % (
+                            hex(randrange(60,255))[2:],
+                            hex(randrange(10,140))[2:],
+                        )
+                        Item(char, 'tree', loc, self._map, type=Type.blocking, color=col)
+
+                    elif char == Blocks.bricks:
+                        x = randrange(50,100)
+                        col = '#ff%s%s%s' % (
+                            hex(x)[2:], hex(x)[2:], hex(x)[2:],
+                        )
+                        Item(char, '', loc, self._map, type=Type.blocking, color=col)
 
                     elif char==Blocks.rock2:
                         Item(char, '', loc, self._map)
@@ -586,7 +601,7 @@ class Board:
         # Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
         #      army=[Pikeman(n=2), Peasant(n=5)])
 
-        g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100)
+        g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100, color='yellow')
         self.put(g)
         s = Sawmill(self.specials[7], '1', player=Misc.player)
         self.put(s)
@@ -1496,7 +1511,7 @@ class Being(BeingItemTownMixin):
                     self.player.resources[x.id] += x.n
                 B.remove(x, new)
 
-        names = [o.name for o in B.get_all_obj(new) if o.name]
+        names = [o.name for o in B.get_all_obj(new) if o.name and o!=self]
         plural = len(names)>1
         names = ', '.join(names)
         if names:
@@ -2431,7 +2446,10 @@ def editor(_map):
             print("brush", brush)
             for _ in range(n):
                 if brush:
-                    B.B[loc.y][loc.x] = [brush]
+                    if brush=='T':
+                        B.B[loc.y][loc.x] = [choice((Blocks.tree1, Blocks.tree2))]
+                    else:
+                        B.B[loc.y][loc.x] = [brush]
                 if chk_oob(loc.mod(mx,my)):
                     loc = loc.mod(mx,my)
 
@@ -2461,14 +2479,13 @@ def editor(_map):
             B.put(k, loc)
         elif k == 'w':
             Item(B, Blocks.water, 'water', loc)
-        elif k == 't':
-            B.put(Blocks.stool, loc)
         elif k == 'a':
             B.put(Blocks.ladder, loc)
         elif k == 'c':
             B.put(Blocks.cupboard, loc)
         elif k == 'B':
-            B.put(Blocks.dock_boards, loc)
+            B.put(Blocks.bricks, loc)
+            brush = Blocks.bricks
         elif k == 'p':
             B.put(Blocks.platform_top, loc)
         elif k == 'g':
@@ -2486,8 +2503,9 @@ def editor(_map):
         elif k == 'O':
             B.put(Blocks.soldier, loc)
 
-        elif k == 'T':
+        elif k == 't':
             B.put(choice((Blocks.tree1, Blocks.tree2)), loc)
+            brush = 'T'
         elif k == 'z':
             B.put(Blocks.guardrail_m, loc)
             brush = Blocks.guardrail_m
