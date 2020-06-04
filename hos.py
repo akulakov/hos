@@ -3,7 +3,7 @@ from bearlibterminal import terminal as blt
 import os
 import sys
 import math
-from random import choice, randrange
+from random import choice, randrange, random
 from collections import defaultdict
 from textwrap import wrap
 from time import sleep
@@ -194,9 +194,9 @@ hero_names = {ID.hero1:'Arcachon', ID.hero2:'Carcassonne', ID.hero3:'Troyes', ID
 
 class Player:
     resources = {
-        ID.gold: 1000,
-        ID.wood: 10,
-        ID.ore: 0,
+        ID.gold: 3000,
+        ID.wood: 20,
+        ID.ore: 20,
         ID.mercury: 0,
         ID.sulphur: 0,
     }
@@ -232,6 +232,9 @@ class Type(Enum):
     archer = auto()
     griffin = auto()
     centaur = auto()
+
+    melee_attack = auto()
+    magic_attack = auto()
 
     hero = auto()
     building = auto()
@@ -299,6 +302,7 @@ class Blocks:
     cursor = '𐌏'
     hut = '△'
     guardhouse = '⌂'
+    sub_plus = '\u208a'
     sub_0 = '\u2080'
     sub_1 = '₁'
     sub_2 = '₂'
@@ -309,6 +313,7 @@ class Blocks:
     sub_7 = '₇'
     sub_8 = '₈'
     sub_9 = '₉'
+
     sub = [sub_0,
            sub_1,
            sub_2,
@@ -320,6 +325,20 @@ class Blocks:
            sub_8,
            sub_9,
           ]
+
+    sub2 = [
+           '\u20bb',
+           '\u20bc',
+           '\u20bd',
+           '\u20be',
+           '\u20bf',
+           '\u20c0',
+           '\u20c1',
+           '\u20c2',
+           '\u20c3',
+           '\u20c4',
+          ]
+
     list_select = '▶'
     # hero_select = '\u035c'
     hero_select = '\u2017'
@@ -590,7 +609,7 @@ class Board:
     def board_1(self):
         self.load_map('1')
         Hero(self.specials[1], '1', name=hero_names[ID.hero1], char=Blocks.hero1_l, id=ID.hero1, player=Misc.player,
-             army=[Archer(n=5), Pikeman(n=5), Griffin(n=2)])
+             army=[Archer(n=12), Pikeman(n=11), Griffin(n=13), Pikeman(n=14), Pikeman(n=15)])
 
         # Hero(self.specials[5], '1', name=hero_names[ID.hero3], char=Blocks.hero1_r, id=ID.hero3, player=Misc.player,
              # army=[Pikeman(n=3), Pikeman(n=4), Cavalier(n=2)])
@@ -606,8 +625,9 @@ class Board:
         s = Sawmill(self.specials[7], '1', player=Misc.player)
         self.put(s)
 
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType)
-        Castle('Rampart Castle', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[Centaur(n=5)],
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType,
+              army=[])
+        Castle('Rampart Castle', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[],
                town_type=RampartTownType)
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
@@ -1261,12 +1281,13 @@ class BattleUI:
                     u.color = 'lighter blue'
                     blt_put_obj(u)
                     sleep(0.25)
-                    path = B.find_path(u.loc, tgt.loc)
+                    path = u.path.get(tgt) or B.find_path(u.loc, tgt.loc)
                     print("path", path)
                     if len(path)==1:
                         u.hit(tgt)
                     elif path:
                         u.move(loc=first(path))
+                        u.path[tgt] = path[1:]
                     else:
                         return
 
@@ -1300,6 +1321,7 @@ class Being(BeingItemTownMixin):
     speed = None
     range_weapon_str = None
     modifiers = None
+    path = None
 
     def __init__(self, loc=None, board_map=None, put=True, id=None, name=None, state=0, n=1, char='?',
                  color=None):
@@ -1313,6 +1335,7 @@ class Being(BeingItemTownMixin):
             self.B.put(self)
         self.max_health = self.health
         self.modifiers = defaultdict(lambda:[1,1])
+        self.path = {}
 
 
     def __str__(self):
@@ -1553,7 +1576,7 @@ class Being(BeingItemTownMixin):
         elif a.x<b.x: return 'l'
         elif a.x>b.x: return 'h'
 
-    def hit(self, obj, ranged=False, dmg=None, mod=1):
+    def hit(self, obj, ranged=False, dmg=None, mod=1, type=None, descr=''):
         if dmg:
             a = dmg
         else:
@@ -1565,9 +1588,14 @@ class Being(BeingItemTownMixin):
             a = int(round((str * self.n * hero_mod * mod)/3))
 
         b = obj.health + obj.max_health*(obj.n-1)
-        d = self.n * self.modifiers['defense'][1]
-        c = b - a - d
-        status(f'{self} hits {obj} for {a} HP')
+        a = obj.defend(a, type)
+        c = b - a
+        if descr:
+            descr = f' with {descr}'
+        if a:
+            status(f'{self} hits {obj}{descr} for {a} HP')
+        else:
+            status(f'{self} fails to hit {obj}{descr}')
         if c <= 0:
             status(f'{obj} dies')
             obj.n = obj.health = 0
@@ -1576,6 +1604,12 @@ class Being(BeingItemTownMixin):
             obj.health = health
             obj.n = n+1
         self.cur_move = 0
+
+    def defend(self, dmg, type):
+        x = 0
+        if type==Type.melee_attack:
+            x = self.n * self.modifiers['defense'][1]
+        return dmg - x
 
     def action(self):
         B=self.B
@@ -1701,8 +1735,8 @@ class PowerBolt(Spell):
     def apply(self, hero, being):
         loc = being.loc
         dmg = self.dmg * hero.magic_power
-        hero.hit(being, dmg=dmg)
-        status(f'{being} was hit with Power Bolt for {dmg} HP')
+        hero.hit(being, dmg=dmg, type=Type.magic_attack, descr=self.name)
+        # status(f'{being} was hit with Power Bolt for {dmg} HP')
         blt_put_obj(Blocks.bolt1, loc)
         sleep(0.25)
         blt_put_obj(Blocks.bolt2, loc)
@@ -1847,9 +1881,6 @@ class Hero(Being):
                         sleep(0.25)
                         B.draw()
                     self.cur_move = self.speed
-                else:
-                    pass
-                    # nothing to do, just end turn
 
     def live_army(self):
         return list(u for u in filter(None, self.army) if u.alive)
@@ -1876,10 +1907,18 @@ class ArmyUnit(Being):
         self.hero = hero
 
     def _str(self):
-        return str(self), getitem(Blocks.sub, self.n, '+')
+        rv = [str(self)]
+        if self.n>99:
+            rv.append(Blocks.sub_plus)
+        elif self.n<10:
+            rv.append(getitem(Blocks.sub, self.n))
+        else:
+            rv.append(getitem(Blocks.sub, self.n//10))
+            rv.append(getitem(Blocks.sub2, self.n%10))
+        return rv
 
     def __repr__(self):
-        return f'<Unit:{self.char}, {self.n}>'
+        return f'<Unit: {self.name}, {self.char}, {self.n}>'
 
     @property
     def total_health(self):
@@ -1911,6 +1950,14 @@ class Griffin(ArmyUnit):
     cost = 200
     char = Blocks.griffin_r
     type = Type.griffin
+
+    def defend(self, dmg, type):
+        dmg = super().defend(dmg, type)
+        if type==Type.magic_attack and random()>.8:
+            status('Griffin defends against magic attack')
+            dmg = 0
+        return dmg
+
 
 class Archer(ArmyUnit):
     strength = 6
