@@ -231,6 +231,8 @@ class Type(Enum):
     cavalier = auto()
     archer = auto()
     griffin = auto()
+    centaur = auto()
+
     hero = auto()
     building = auto()
     raised_platform = auto()
@@ -240,6 +242,7 @@ class Blocks:
     jousting_ground = '\u25ed'
     archers_tower = '\u0080'
     griffin_tower = '\u0081'
+    centaur_stables = '\u0082'
 
     cavalier_l = '\u0007'
     cavalier_r = '\u0008'
@@ -247,6 +250,9 @@ class Blocks:
     archer_l = '\u000b'
     griffin_r = '\u000e'
     griffin_l = '\u000f'
+
+    centaur_l = '\u0011'
+    centaur_r = '\u0012'
 
     arrow_r = '\u20e9'
     arrow_l = '\u20ea'
@@ -493,7 +499,7 @@ class Board:
                ]
 
     def get_being(self, loc):
-        return first(o for o in self.get_all_obj(loc) if isinstance(o, Being))
+        return first(o for o in self.get_all_obj(loc) if isinstance(o, Being) and o.alive)
 
     def load_map(self, map_num, for_editor=0, castle=None):
         _map = open(f'maps/{map_num}.map').readlines()
@@ -585,23 +591,27 @@ class Board:
         s = Sawmill(self.specials[7], '1', player=Misc.player)
         self.put(s)
 
-        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player)
-        Castle('Castle 2', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[Pikeman(n=1)])
+        Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType)
+        Castle('Rampart Castle', self.specials[3], self._map, id=ID.castle2, player=Misc.blue_player, army=[Centaur(n=5)],
+               town_type=RampartTownType)
 
         IndependentArmy(Loc(11,10), '1', army=[Peasant(n=5)])
         IndependentArmy(Loc(11,12), '1', army=[Pikeman(n=5), Peasant(n=9)])
 
     def board_2(self):
         self.load_map('2')
-        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)])
+        Castle('Castle 3', self.specials[1], self._map, id=ID.castle3, player=Misc.blue_player, army=[Peasant(n=1)],
+               town_type=CastleTownType)
 
     def board_3(self):
         self.load_map('3')
-        Castle('Castle 4', self.specials[1], self._map, id=ID.castle4, player=Misc.blue_player, army=[Peasant(n=5)])
+        Castle('Castle 4', self.specials[1], self._map, id=ID.castle4, player=Misc.blue_player, army=[Peasant(n=5)],
+               town_type=CastleTownType)
 
     def board_4(self):
         self.load_map('4')
-        Castle('Castle 5', self.specials[1], self._map, id=ID.castle5, player=Misc.blue_player, army=[Pikeman(n=8)])
+        Castle('Castle 5', self.specials[1], self._map, id=ID.castle5, player=Misc.blue_player, army=[Pikeman(n=8)],
+               town_type=CastleTownType)
 
     def board_siege(self):
         self.load_map('siege')
@@ -796,10 +806,7 @@ class RaisedPlatform(Item):
     id = ID.raised_platform
 
 class TownType:
-    pass
-
-class CastleTownType(TownType):
-    pass
+    building_types = None
 
 class Castle(Item):
     weekly_income = 250
@@ -1058,7 +1065,7 @@ class Castle(Item):
 class BuildUI:
     def go(self, castle):
         existing = (b.__class__ for b in castle.board.buildings)
-        available = [b for b in (Hut, Guardhouse, ArchersTower, JoustingGround) if b not in existing]
+        available = [b for b in castle.town_type.building_types if b not in existing]
         _av = []
         pl = castle.player
         new = []
@@ -1109,7 +1116,7 @@ class BattleUI:
         a_str = a.total_strength()
         b_str = b.total_strength()
         winner, loser, hp = (a,b,b_str) if a_str>b_str else (b,a,a_str)
-        if winner.player:
+        if winner.is_hero:
             winner.xp += loser.total_strength()//2
         for u in winner.live_army():
             if u.total_health < hp:
@@ -1138,7 +1145,6 @@ class BattleUI:
             B.board_siege()
         else:
             B.load_map('battle')
-            B.random_rocks(20)
 
         loc = B.specials[1]
         for u in a.live_army():
@@ -1148,6 +1154,9 @@ class BattleUI:
         for u in b.live_army():
             B.put(u, loc)
             loc = loc.mod_d(2)
+
+        if b.type != Type.castle:
+            B.random_rocks(20)
 
         B.draw(battle=1)
         while 1:
@@ -1230,12 +1239,15 @@ class BattleUI:
                     return AUTO_BATTLE
             else:
                 tgt = u.closest(hh.live_army())
+                print("hh.live_army()", hh.live_army())
+                print("tgt", tgt)
 
                 if tgt:
                     u.color = 'lighter blue'
                     blt_put_obj(u)
                     sleep(0.25)
                     path = B.find_path(u.loc, tgt.loc)
+                    print("path", path)
                     if len(path)==1:
                         u.hit(tgt)
                     elif path:
@@ -1250,20 +1262,6 @@ class BattleUI:
                         u.color=None
                         blt_put_obj(u)
                         break
-
-    # def handle_unit_modifiers(self, u):
-    #     for turns, attr, mod, active in u.modifiers:
-    #     rm = []
-    #     for n, _m in enumerate(u.modifiers):
-    #         turns, attr, mod, active = _m
-    #         x = getattr(u, attr)
-    #         if turns==0:
-    #             setattr(u, attr, x-mod)
-    #             rm.append(n)
-    #         if not active:
-    #             setattr(u, attr, x+mod)
-    #         _m[0] -= 1
-
 
 def blt_put_obj(obj, loc=None):
     x,y=loc or obj.loc
@@ -1311,14 +1309,11 @@ class Being(BeingItemTownMixin):
 
     def talk(self, being, dialog=None, yesno=False, resp=False):
         """Messages, dialogs, yes/no, prompt for responce, multiple choice replies."""
-        # if isinstance(dialog, int):
-            # dialog = conversations.get(dialog)
         if isinstance(being, int):
             being = Objects.get(being)
         loc = being.loc
         if isinstance(dialog, str):
             dialog = [dialog]
-        # dialog = dialog or conversations[being.id]
         x = min(loc.x, 60)
         multichoice = 0
 
@@ -1449,7 +1444,6 @@ class Being(BeingItemTownMixin):
                 BattleUI(B).go(self, cas)
             return None, None
 
-        # if new and not ignore_blocked and B.is_blocked(new):
         if new and B.is_blocked(new):
             new = None
 
@@ -1854,7 +1848,8 @@ class Hero(Being):
     def total_strength(self):
         return sum(u.n*u.health for u in self.live_army())
 
-IndependentArmy = Hero
+class IndependentArmy(Hero):
+    is_hero = 0
 
 class ArmyUnit(Being):
     _name = None
@@ -1932,7 +1927,6 @@ class Archer(ArmyUnit):
             blt_put_obj(a)
             sleep(0.15)
 
-
 class Cavalier(ArmyUnit):
     strength = 5
     defense = 4
@@ -1942,11 +1936,21 @@ class Cavalier(ArmyUnit):
     char = Blocks.cavalier_r
     type = Type.cavalier
 
+class Centaur(ArmyUnit):
+    strength = 5
+    defense = 3
+    health = 8
+    speed = 6
+    cost = 70
+    char = Blocks.centaur_r
+    type = Type.centaur
+
 cls_by_type = {
     Type.peasant.name: Peasant,
     Type.pikeman.name: Pikeman,
     Type.archer.name: Archer,
     Type.cavalier.name: Cavalier,
+    Type.centaur.name: Centaur,
 }
 
 class Building(BeingItemTownMixin):
@@ -2015,6 +2019,19 @@ class JoustingGround(Building):
     char = Blocks.jousting_ground
     available = 2
     growth = 2
+
+class CentaurStables(Building):
+    cost = {ID.gold: 500, ID.wood: 5}
+    units = Centaur
+    char = Blocks.centaur_stables
+    available = 10
+    growth = 14
+
+class CastleTownType(TownType):
+    building_types = (Hut, Guardhouse, ArchersTower, JoustingGround)
+
+class RampartTownType(TownType):
+    building_types = (CentaurStables,)
 
 class Saves:
     saves = {}
