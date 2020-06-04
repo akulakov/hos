@@ -1137,8 +1137,8 @@ class BattleUI:
         if b.type == Type.castle:
             B.board_siege()
         else:
-            B.random_rocks(20)
             B.load_map('battle')
+            B.random_rocks(20)
 
         loc = B.specials[1]
         for u in a.live_army():
@@ -1479,7 +1479,7 @@ class Being(BeingItemTownMixin):
                 to_r = False
                 if loc:
                     to_r = loc.x>self.loc.x or (loc.x==self.loc.x and loc.y%2==1)
-                if dir and dir in 'hyb' or to_r:
+                if dir and dir in 'hyb' or not to_r:
                     self.char = getattr(Blocks, name+'_l')
                 else:
                     self.char = getattr(Blocks, name+'_r')
