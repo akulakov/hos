@@ -459,10 +459,6 @@ class Board:
 
     def next_move_to(self, src, tgt):
         p = self.find_path(src, tgt)
-        for n,nbr in self.g.items():
-            print(n)
-            print(nbr)
-        print("p", p)
         return first(p)
 
     def find_path(self, src, tgt):
@@ -472,7 +468,6 @@ class Board:
         path = []
         visited = set([src])
         while 1:
-            print("cur", cur)
             nbr = [n for n in self.g[cur] if n not in visited]
             next = first(sorted([(dist(n,tgt), id(n), n) for n in nbr]))
             if not next:
@@ -1016,7 +1011,6 @@ class Castle(Item):
                 remains.append(a)
 
         if len(A)==1:
-            print("first(remains)", first(remains))
             return first(remains)
         else:
             return pad_none(remains, 6)
@@ -1094,7 +1088,6 @@ class Castle(Item):
                 curs = len(B.buildings)
             if curs>len(B.buildings):
                 curs = 0
-            print(self.army)
 
 
 class BuildUI:
@@ -1274,15 +1267,12 @@ class BattleUI:
                     return AUTO_BATTLE
             else:
                 tgt = u.closest(hh.live_army())
-                print("hh.live_army()", hh.live_army())
-                print("tgt", tgt)
 
                 if tgt:
                     u.color = 'lighter blue'
                     blt_put_obj(u)
                     sleep(0.25)
                     path = u.path.get(tgt) or B.find_path(u.loc, tgt.loc)
-                    print("path", path)
                     if len(path)==1:
                         u.hit(tgt)
                     elif path:
@@ -1448,8 +1438,6 @@ class Being(BeingItemTownMixin):
             new = rv[1]
         else:
             new = loc
-        # try: print('###', new , isinstance(B[new], Being) , B[new].alive)
-        # except Exception as e: print(e)
         if new:
             being = B.get_being(new)
             if being and being.alive:
@@ -1545,7 +1533,6 @@ class Being(BeingItemTownMixin):
         if abs(self.loc.x - obj.loc.x) <= 1 and \
            abs(self.loc.y - obj.loc.y) <= 1:
                 if self.is_hero:
-                    print("obj, alive", obj, obj.alive)
                     BattleUI(self.B).go(self, obj)
                     Misc.B = self.B
                     self.cur_move = 0
@@ -1838,9 +1825,7 @@ class Hero(Being):
         if ch and ch in ascii_letters:
             try:
                 spell = lst[string.ascii_letters.index(ch)]
-                print("spell", spell)
             except IndexError:
-                print("IndexError, drawing board")
                 B.draw()
                 return
             spell.cast(B, self)
@@ -1860,7 +1845,6 @@ class Hero(Being):
 
     def ai_move(self):
         """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
-        print ("in def ai_move()")
         B = self.B
         castles = [c for c in self.player.castles if c.board_map==self.board_map and not B.get_being(c.loc)]
         for player in [p for p in players if p!=self.player]:
@@ -2252,8 +2236,6 @@ def main(load_game):
 
 
 def handle_ui(unit, hero=None, only_allow=None):
-    # print (f"in handle_ui(), {unit.name}, {unit.cur_move}")
-
     if not unit.cur_move:
         return END_MOVE
     k = None
@@ -2410,7 +2392,6 @@ def stats(castle=None, battle=False):
         # blt.clear_area(0,y,WIDTH,1)
         x = 1
         for a in castle.army:
-            print("a", a)
             puts2(x+1 if a else x,
                   y,
                   a or blt_esc('[ ]')
@@ -2468,7 +2449,6 @@ def editor(_map):
         with open(fname, 'w') as fp:
             for n in range(HEIGHT):
                 prefix = '' if n%2==0 else ' '
-                # print(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
                 fp.write(prefix + (Blocks.blank + ' ')*WIDTH + '\n')
     B = Board(None, _map)
     setattr(Boards, 'b_'+_map, B)
@@ -2490,7 +2470,6 @@ def editor(_map):
             if mx==-1 and my and loc.y%2==1:
                 mx=0
 
-            print("brush", brush)
             for _ in range(n):
                 if brush:
                     if brush=='T':
