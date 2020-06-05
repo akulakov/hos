@@ -561,10 +561,8 @@ class Board:
         # Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
         #      army=[Pikeman(n=2), Peasant(n=5)])
 
-        g = ResourceItem(Blocks.gold, 'gold', loc=self.specials[6], id=ID.gold, n=100, color='yellow')
-        self.put(g)
+        g = ResourceItem(Blocks.gold, 'gold', self.specials[6], self._map, id=ID.gold, n=100, color='yellow')
         s = Sawmill(self.specials[7], '1', player=Misc.player)
-        self.put(s)
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType,
               army=[])
@@ -676,7 +674,7 @@ class Boards:
     def get_by_loc(loc):
         return board_grid[loc.y][loc.x]
 
-class BeingItemTownMixin:
+class BeingItemCastleBase:
     is_player = 0
     is_hero = 0
     state = 0
@@ -686,6 +684,11 @@ class BeingItemTownMixin:
     player = None
     id = None
     hero = None
+
+    def __init__(self, id=None):
+        self.id=id
+        if id:
+            Objects.set_by_id(id, self)
 
     def __str__(self):
         c=self.char
@@ -741,15 +744,14 @@ class BeingItemTownMixin:
 
 
 
-class Item(BeingItemTownMixin):
+class Item(BeingItemCastleBase):
     board_map = None
 
     def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
-                char, name, loc, board_map, id, type, color, n
+        super().__init__(id)
+        self.char, self.name, self.loc, self.board_map, self.type, self.color, self.n = \
+                char, name, loc, board_map, type, color, n
         self.inv = defaultdict(int)
-        if id:
-            Objects.set_by_id(id, self)
         if board_map and put:
             self.B.put(self)
 
@@ -770,7 +772,6 @@ class Item(BeingItemTownMixin):
             self.B.put(self)
 
 class ResourceItem(Item):
-    color = 'yellow'
     n = 0
 
 class Arrow(Item):
@@ -1085,8 +1086,7 @@ class BuildUI:
                     Misc.hero.talk(Misc.hero, 'Not enough resources for this building')
                     return
             loc = castle.board.random_empty()
-            bld = b(loc, None, castle)
-            castle.board.put(bld)
+            bld = b(loc, 'town_ui', castle)
             castle.board.buildings.append(bld)
 
 
@@ -1250,7 +1250,7 @@ class LoadBoard:
     def __init__(self, new, b_new):
         self.new, self.b_new = new, b_new
 
-class Being(BeingItemTownMixin):
+class Being(BeingItemCastleBase):
     n = None
     health = 1
     health = 1
@@ -1489,21 +1489,6 @@ class Being(BeingItemTownMixin):
                 self.cur_move = 0
             else:
                 self.hit(obj)
-
-        # else:
-        #     d = self.get_dir(obj.loc)
-
-        #     rv = self.move(d, attack=False)
-        #     # really dumb temporary kludge, really shouldn't have even done this..
-        #     if rv is None:
-        #         if d == 'h':
-        #             self.move(choice('yb'))
-        #             self.cur_move -= 1
-        #         elif d=='l':
-        #             self.move(choice('un'))
-        #             self.cur_move -= 1
-        #         else:
-        #             self.move(choice('hjklyubn'))
 
     def get_dir(self, b):
         a = self.loc
@@ -1935,15 +1920,15 @@ class Centaur(ArmyUnit):
     char = Blocks.centaur_r
     type = Type.centaur
 
-class Building(BeingItemTownMixin):
+class Building(BeingItemCastleBase):
     available = 0
     _name = None
     type = Type.building
 
     def __init__(self, loc=None, board_map=None, castle=None, player=None):
         self.loc, self.board_map, self.castle, self.player = loc, board_map, castle, player
-        # if board_map:
-            # self.B.put(self)
+        if board_map:
+            self.B.put(self)
 
     def __repr__(self):
         char = super().__repr__()
