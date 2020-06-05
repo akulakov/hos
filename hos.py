@@ -464,7 +464,6 @@ def manage_castles():
 
     refresh()
     ch = get_and_parse_key()
-    item_id = None
     if ch and ch in ascii_letters:
         try:
             castle = p_castles[string.ascii_letters.index(ch)]
@@ -732,8 +731,8 @@ class Board:
         # Hero(self.specials[4].mod_r(2), '1', name=hero_names[ID.hero4], char=Blocks.hero1_l, id=ID.hero4, player=Misc.blue_player,
         #      army=[Pikeman(n=2), Peasant(n=5)])
 
-        g = ResourceItem(Blocks.gold, 'gold', self.specials[6], self._map, id=ID.gold, n=100, color='yellow')
-        s = Sawmill(self.specials[7], '1', player=Misc.player)
+        ResourceItem(Blocks.gold, 'gold', self.specials[6], self._map, id=ID.gold, n=100, color='yellow')
+        Sawmill(self.specials[7], '1', player=Misc.player)
 
         Castle('Castle 1', self.specials[2], self._map, id=ID.castle1, player=Misc.blue_player, town_type=CastleTownType,
               army=[])
@@ -1029,8 +1028,6 @@ class Castle(ArmyMixin, BeingItemCastleBase):
             if not Objects.get_by_id(id):
                 lst.append((id, n))
 
-        pl = self.player
-
         if not lst:
             Misc.hero.talk(Misc.hero, 'No more heroes for hire.')
             return
@@ -1048,7 +1045,6 @@ class Castle(ArmyMixin, BeingItemCastleBase):
 
         refresh()
         ch = get_and_parse_key()
-        item_id = None
         if ch and ch in ascii_letters:
             try:
                 id, name = lst[string.ascii_letters.index(ch)]
@@ -1218,7 +1214,6 @@ class BuildUI:
     def go(self, castle):
         existing = [b.__class__ for b in castle.board.buildings]
         available = [b for b in castle.town_type.building_types if b not in existing]
-        _av = []
         pl = castle.player
         new = []
         for b in available:
@@ -1241,7 +1236,6 @@ class BuildUI:
 
         refresh()
         ch = get_and_parse_key()
-        item_id = None
         if ch and ch in ascii_letters:
             try:
                 b = available[string.ascii_letters.index(ch)]
@@ -1884,7 +1878,6 @@ class Hero(ArmyMixin, Being):
             lst.append(Objects.get_by_id(id))
         lst = [s for s in lst if s.cost<=self.mana]
 
-        pl = self.player
         if not lst:
             self.talk(self, 'Cannot cast a spell: no spells or not enough mana!')
             return
@@ -1902,7 +1895,6 @@ class Hero(ArmyMixin, Being):
 
         refresh()
         ch = get_and_parse_key()
-        item_id = None
         if ch and ch in ascii_letters:
             try:
                 spell = lst[string.ascii_letters.index(ch)]
@@ -2219,7 +2211,6 @@ def main(load_game):
         for b in player_buildings + ai_buildings:
             b.available += b.growth
 
-        d = Misc.day
         Misc.day+=1
         if Misc.day==8:
             Misc.week+=1
@@ -2395,7 +2386,6 @@ def editor(_map):
         elif k == 'o':
             cmds = ''.split()
             cmd = ''
-            BL=Blocks
             while 1:
                 k = get_and_parse_key()
                 if k:
@@ -2422,10 +2412,6 @@ def editor(_map):
                         fp.write(' ')
                     for cell in row:
                         a = cell[-1]
-                        # char = getattr(a, 'char', None)
-                        # if char and isinstance(char,int) and char>500:
-                        #     k = val_to_k[char]
-                        #     a = getattr(OLDBlocks, k)
                         fp.write(str(a) + ' ')
                     fp.write('\n')
             written=1
