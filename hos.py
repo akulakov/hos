@@ -782,7 +782,17 @@ class RaisedPlatform(Item):
 class TownType:
     building_types = None
 
-class Castle(BeingItemCastleBase):
+class ArmyMixin:
+    def total_strength(self):
+        return sum(u.n*u.health for u in self.live_army())
+
+    def army_is_dead(self):
+        return all(not u or u.dead for u in self.army)
+
+    def live_army(self):
+        return list(u for u in filter(None, self.army) if u.alive)
+
+class Castle(ArmyMixin, BeingItemCastleBase):
     weekly_income = 250
     current_hero = None
     type = Type.castle
@@ -817,15 +827,6 @@ class Castle(BeingItemCastleBase):
         if Misc.day==1:
             for b in self.board.buildings:
                 b.available += b.growth
-
-    # duplicated from Hero
-    def total_strength(self):
-        return sum(u.n*u.health for u in self.live_army())
-    def army_is_dead(self):
-        return all(not u or u.dead for u in self.army)
-    def live_army(self):
-        return list(u for u in filter(None, self.army) if u.alive)
-    # / duplicated from Hero
 
     @property
     def board(self):
@@ -1663,7 +1664,7 @@ class PowerBolt(Spell):
 
 all_spells = (PowerBolt(), ShieldSpell())
 
-class Hero(Being):
+class Hero(ArmyMixin, Being):
     xp = 0
     is_hero = 1
     speed = 5
@@ -1793,17 +1794,9 @@ class Hero(Being):
                         B.draw()
                     self.cur_move = self.speed
 
-    def live_army(self):
-        return list(u for u in filter(None, self.army) if u.alive)
-
-    def army_is_dead(self):
-        return all(not u or u.dead for u in self.army)
-
     def can_merge(self, type):
         return any(s is None or s.type==type for s in self.army)
 
-    def total_strength(self):
-        return sum(u.n*u.health for u in self.live_army())
 
 class IndependentArmy(Hero):
     is_hero = 0
