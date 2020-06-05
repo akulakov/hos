@@ -13,7 +13,7 @@ from copy import copy  #, deepcopy
 from enum import Enum, auto
 
 """
-+ when over 9 units is big size, should be subscript
+HoS
 """
 
 HEIGHT = 16
@@ -270,60 +270,33 @@ class Blocks:
 
     blank = '.'
     rock = '█'
-    platform = '⎽'
-    stand = '≖'
     door = '⌸'
     water = '≋'
-    fountain = '␣'
-    tree1 = noto_tiles['tree1']
-    tree2 = noto_tiles['tree2']
     tree1 = '\u2689'
     tree2 = '\u268a'
     rock2 = '▅'
     rock3 = '░'
-    cactus = noto_tiles['cactus']
-    tulip = noto_tiles['flower1']
-    snowman = '☃'
-    snowflake = noto_tiles['snowflake']
-    book1 = noto_tiles['book1']
-    book2 = noto_tiles['book2']
-    lever = '╖'
-    sharp_rock = noto_tiles['sharp-rock1']
-    statue = 'Ộ'
-    hexagon = '⎔'
-    soldier = '⍾'
     peasant = '\u23f2'
     pikeman = '\u23f3'
-    # hero1 = noto_tiles['man']
     hero1_l = '\u0003'
     hero1_r = '\u0004'
-    # gold = '☉'
     rubbish = '⛁'
     cursor = '𐌏'
     hut = '△'
     guardhouse = '⌂'
     sub_plus = '\u208a'
-    sub_0 = '\u2080'
-    sub_1 = '₁'
-    sub_2 = '₂'
-    sub_3 = '₃'
-    sub_4 = '₄'
-    sub_5 = '₅'
-    sub_6 = '₆'
-    sub_7 = '₇'
-    sub_8 = '₈'
-    sub_9 = '₉'
 
-    sub = [sub_0,
-           sub_1,
-           sub_2,
-           sub_3,
-           sub_4,
-           sub_5,
-           sub_6,
-           sub_7,
-           sub_8,
-           sub_9,
+    sub = [
+            '\u2080',
+            '₁',
+            '₂',
+            '₃',
+            '₄',
+            '₅',
+            '₆',
+            '₇',
+            '₈',
+            '₉'
           ]
 
     sub2 = [
@@ -340,7 +313,6 @@ class Blocks:
           ]
 
     list_select = '▶'
-    # hero_select = '\u035c'
     hero_select = '\u2017'
 
     # spells
@@ -539,38 +511,11 @@ class Board:
                         d = Item(Blocks.door, 'door', loc, self._map)
                         doors.append(d)
 
-                    elif char==Blocks.sharp_rock:
-                        Item(Blocks.sharp_rock, 'sharp_rock', loc, type=Type.deadly, board_map=self._map)
-
-                    elif char == BL.snowman:
-                        Item(char, 'snowman', loc, self._map)
-                    elif char == BL.snowflake:
-                        Item(char, 'snowflake', loc, self._map)
-
                     elif char==Blocks.rock3:
                         Item(Blocks.rock3, 'rock', loc, type=Type.blocking, board_map=self._map)
 
-                    elif char==Blocks.cactus:
-                        Item(Blocks.cactus, 'cactus', loc, self._map)
-
                     elif char==Blocks.water:
                         Item(Blocks.water, 'water', loc, type=Type.water, board_map=self._map)
-
-                    elif char==Blocks.tulip:
-                        Item(Blocks.tulip, 'tulip', loc, self._map)
-
-                    elif char==Blocks.hut:
-                        h=Hut(loc, self._map, castle)
-                        self.put(h)
-                        self.buildings.append(h)
-
-                    elif char==Blocks.guardhouse:
-                        a=Guardhouse(loc, self._map, castle)
-                        self.put(a)
-                        self.buildings.append(a)
-
-                    elif char==Blocks.fountain:
-                        Item(Blocks.fountain, 'water fountain basin', loc, self._map)
 
                     elif char in (BL.book1, BL.book2):
                         Item(char, 'books', loc, self._map)
@@ -673,7 +618,6 @@ class Board:
                 if isinstance(a, str):
                     puts(x,y,a)
                     continue
-                # if isinstance(a, int) and a<500:
                 if isinstance(a, ID):
                     a = Objects.get_by_id(a)
                 puts(x,y,a)
@@ -2485,92 +2429,24 @@ def editor(_map):
             brush = Blocks.blank
         elif k == 'r':
             brush = Blocks.rock
-        elif k == 's':
-            B.put(Blocks.steps_r, loc)
-            brush = Blocks.steps_r
-        elif k == '/':
-            B.put(Blocks.angled1, loc)
-            brush = Blocks.angled1
-        elif k == '\\':
-            B.put(Blocks.angled2, loc)
-            brush = Blocks.angled2
-        elif k == 'S':
-            B.put(Blocks.steps_l, loc)
-            brush = Blocks.steps_l
-        elif k == 'M':
-            B.put(Blocks.smoke_pipe, loc)
-        elif k == 'd':
-            B.put('d', loc)
         elif k and k in '0123456789':
             B.put(k, loc)
         elif k == 'w':
             Item(B, Blocks.water, 'water', loc)
-        elif k == 'a':
-            B.put(Blocks.ladder, loc)
-        elif k == 'c':
-            B.put(Blocks.cupboard, loc)
         elif k == 'B':
             B.put(Blocks.bricks, loc)
             brush = Blocks.bricks
-        elif k == 'p':
-            B.put(Blocks.platform_top, loc)
-        elif k == 'g':
-            B.put(Blocks.grill, loc)
-        elif k == 'F':
-            B.put(Blocks.ferry, loc)
-        elif k == 'A':
-            B.put(Blocks.bars, loc)
-        elif k == 'R':
-            B.put(Blocks.rubbish, loc)
-
-        # NPCs
-        elif k == 'G':
-            B.put(Blocks.elephant, loc)
-        elif k == 'O':
-            B.put(Blocks.soldier, loc)
-
         elif k == 't':
             B.put(choice((Blocks.tree1, Blocks.tree2)), loc)
             brush = 'T'
-        elif k == 'z':
-            B.put(Blocks.guardrail_m, loc)
-            brush = Blocks.guardrail_m
-        elif k == 'x':
-            B.put(Blocks.rock2, loc)
-            brush = Blocks.rock2
-        elif k == 'X':
-            B.put(Blocks.shelves, loc)
-        elif k == 'C':
-            B.put(Blocks.cactus, loc)
-        elif k == 'v':
-            B.put(Blocks.snowflake, loc)
-        elif k == 'V':
-            B.put(Blocks.snowman, loc)
-
         elif k == 'o':
-            cmds = 'gm gl gr l b ob f'.split()
+            cmds = ''.split()
             cmd = ''
             BL=Blocks
             while 1:
                 k = get_and_parse_key()
                 if k:
                     cmd += k
-                if cmd == 'l':  B.put(BL.locker, loc)
-                elif cmd == 'B':  B.put(BL.books, loc)
-                elif cmd == 'ob': B.put(BL.open_book, loc)
-                elif cmd == 't':  B.put('t', loc)
-                elif cmd == 'f':  B.put(BL.fountain, loc)
-                elif cmd == 'p':  B.put(BL.platform2, loc)
-
-                elif cmd == 'm': B.put(BL.monkey, loc)
-                elif cmd == 'v': B.put(BL.lever, loc)
-                elif cmd == 's': B.put(BL.sharp_rock, loc)
-                elif cmd == 'r': B.put(BL.rock3, loc)
-                elif cmd == 'd': B.put('d', loc)     # drawing
-                elif cmd == 'R': B.put(Blocks.rabbit, loc)
-                elif cmd == 'h': B.put(Blocks.hut, loc)
-                elif cmd == 'b': B.put(Blocks.guardhouse, loc)
-
                 elif any(c.startswith(cmd) for c in cmds):
                     continue
                 break
