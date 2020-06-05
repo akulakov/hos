@@ -685,10 +685,13 @@ class BeingItemCastleBase:
     id = None
     hero = None
 
-    def __init__(self, id=None):
-        self.id=id
+    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
+        self.char, self.name, self.loc, self.board_map, self.id, self.type, self.color, self.n = \
+                char, name, loc, board_map, id, type, color, n
         if id:
             Objects.set_by_id(id, self)
+        if board_map and put:
+            self.B.put(self)
 
     def __str__(self):
         c=self.char
@@ -743,17 +746,12 @@ class BeingItemCastleBase:
             return getattr(Boards, 'b_'+self.board_map)
 
 
-
 class Item(BeingItemCastleBase):
     board_map = None
 
-    def __init__(self, char, name, loc=None, board_map=None, put=True, id=None, type=None, color=None, n=0):
-        super().__init__(id)
-        self.char, self.name, self.loc, self.board_map, self.type, self.color, self.n = \
-                char, name, loc, board_map, type, color, n
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.inv = defaultdict(int)
-        if board_map and put:
-            self.B.put(self)
 
     def __repr__(self):
         return f'<I: {self.char}>'
@@ -784,7 +782,7 @@ class RaisedPlatform(Item):
 class TownType:
     building_types = None
 
-class Castle(Item):
+class Castle(BeingItemCastleBase):
     weekly_income = 250
     current_hero = None
     type = Type.castle
