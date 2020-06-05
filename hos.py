@@ -975,6 +975,7 @@ class Castle(Item):
 
     def recruit_ui(self):
         recruited = defaultdict(int)
+        # recruited = {}
         curs = 0
         self.board.draw(castle=self)
         B = self.board
@@ -982,7 +983,7 @@ class Castle(Item):
             lst = [('', 'Unit', 'Available', 'Recruited')]
             for n, b in enumerate(B.buildings):
                 x = Blocks.cursor if n==curs else ''
-                lst.append((x, b.units.__name__, b.available, recruited[b.units.type]))
+                lst.append((x, b.units.__name__, b.available, recruited[n]))
 
             x = Blocks.cursor if curs==len(self.board.buildings) else ''
             lst.append((x, 'ACCEPT', '', ''))
@@ -998,30 +999,46 @@ class Castle(Item):
             bld = getitem(B.buildings, curs)
             gold = self.player.resources[ID.gold]
             unit_cost = bld.units.cost if bld else 0
+
             if k in ('q', 'ESCAPE'):
                 break
-            elif k == 'DOWN': curs+=1
-            elif k == 'UP': curs-=1
+
+            elif k == 'DOWN':
+                curs+=1
+            elif k == 'UP':
+                curs-=1
+
             elif not bld and k=='ENTER':
-                self.player.resources[ID.gold] = gold
-                # Hope there's enough empty slots!
-                for type, n in recruited.items():
+                for bld_n, n in recruited.items():
+                    bld = B.buildings[bld_n]
                     if n:
                         for m, slot in enumerate(self.army):
                             if not slot:
-                                self.army[m] = cls_by_type[type.name](n=n)
+                                self.army[m] = bld.units(n=n)
+                                recruited[bld_n] = 0
                                 break
                             elif slot.type==type:
                                 slot.n+=n
+                                recruited[bld_n] = 0
                                 break
+
+                # silently revert recruits who didn't fit in the slots
+                for bld_n, n in recruited.items():
+                    bld = B.buildings[bld_n]
+                    if n:
+                        bld.available += n
+                        gold += bld.units.cost * n
+                self.player.resources[ID.gold] = gold
                 break
-            elif k == 'LEFT' and bld and recruited[bld.units.type]:
-                bld.available+=1
-                recruited[bld.units.type]-=1
+
+            elif k == 'LEFT' and bld and recruited[curs]:
+                bld.available += 1
+                recruited[curs] -= 1
                 gold += unit_cost
+
             elif k == 'RIGHT' and bld and bld.available and unit_cost<=gold:
-                bld.available-=1
-                recruited[bld.units.type]+=1
+                bld.available -= 1
+                recruited[curs] += 1
                 gold -= unit_cost
 
             if curs<0:
@@ -1032,7 +1049,7 @@ class Castle(Item):
 
 class BuildUI:
     def go(self, castle):
-        existing = (b.__class__ for b in castle.board.buildings)
+        existing = [b.__class__ for b in castle.board.buildings]
         available = [b for b in castle.town_type.building_types if b not in existing]
         _av = []
         pl = castle.player
@@ -1104,8 +1121,7 @@ class BattleUI:
         if b.is_hero: b.reset_mana()
         a._strength = a.total_strength()
         b._strength = b.total_strength()
-        B = Misc.B = Boards.b_battle
-        B.clear()
+        B = Misc.B = Boards.b_battle = Board(None, 'battle')
         if b.type == Type.castle:
             B.board_siege()
         else:
@@ -1919,14 +1935,6 @@ class Centaur(ArmyUnit):
     char = Blocks.centaur_r
     type = Type.centaur
 
-cls_by_type = {
-    Type.peasant.name: Peasant,
-    Type.pikeman.name: Pikeman,
-    Type.archer.name: Archer,
-    Type.cavalier.name: Cavalier,
-    Type.centaur.name: Centaur,
-}
-
 class Building(BeingItemTownMixin):
     available = 0
     _name = None
@@ -2086,23 +2094,17 @@ def get_mouse_pos():
     return blt.state(blt.TK_MOUSE_X), blt.state(blt.TK_MOUSE_Y)
 
 def board_setup():
-    Boards.b_battle = Board(Loc(2,0), 'battle')
-    Boards.b_battle.load_map('battle')
-
-    Boards.b_1 = Board(Loc(0,2), '1')
+    Boards.b_1 = Board(Loc(0,0), '1')
     Boards.b_1.board_1()
-    Boards.b_2 = Board(Loc(1,2), '2')
+    Boards.b_2 = Board(Loc(1,0), '2')
     Boards.b_2.board_2()
 
-    Boards.b_3 = Board(Loc(0,3), '3')
+    Boards.b_3 = Board(Loc(0,1), '3')
     Boards.b_3.board_3()
-    Boards.b_4 = Board(Loc(1,3), '4')
+    Boards.b_4 = Board(Loc(1,1), '4')
     Boards.b_4.board_4()
 
     board_grid[:] = [
-        # 0 means no board
-        ['town_ui', None, 'battle'],
-        [None,None,None],
         ['1', '2', None],
         ['3', '4', None],
     ]
