@@ -359,6 +359,177 @@ def chk_b_oob(loc, x=0, y=0):
     newx, newy = loc.x+x, loc.y+y
     return 0 <= newy <= h-1 and 0 <= newx <= w-1
 
+def debug(*args):
+    debug_log.write(str(args) + '\n')
+    debug_log.flush()
+print=debug
+
+def blt_put_obj(obj, loc=None):
+    x,y=loc or obj.loc
+    x = x*2 +(0 if y%2==0 else 1)
+    blt.clear_area(x,y,1,1)
+    puts(x, y, obj)
+    refresh()
+
+def pad_none(lst, size):
+    return lst + [None]*(size-len(lst))
+
+def dist(a,b):
+    a = getattr(a,'loc',a)
+    b = getattr(b,'loc',b)
+    return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2 + (a.x-b.x)*(a.y-b.y))
+
+def getitem(it, ind=0, default=None):
+    try: return it[ind]
+    except IndexError: return default
+
+def puts(x, y, text):
+    _puts(x, y, text)
+
+def puts2(x, y, text):
+    _puts(x, y+HEIGHT, text)
+
+def _puts(x,y,a):
+    if isinstance(a,str):
+        blt.puts(x,y,a)
+    elif a._str:
+        # combined glyps
+        for _s in a._str():
+            if a.color:
+                _s = f'[color={a.color}]{_s}[/color]'
+            blt.puts(x,y,_s)
+    else:
+        if a.color:
+            a = f'[color={a.color}]{a}[/color]'
+        blt.puts(x,y,str(a))
+
+def refresh():
+    blt.refresh()
+
+def get_and_parse_key():
+    while 1:
+        k = parsekey(blt.read())
+        if k!='SHIFT':
+            return k
+
+def parsekey(k):
+    b=blt
+    valid = (b.TK_RETURN, b.TK_SHIFT, b.TK_ESCAPE, b.TK_UP, b.TK_DOWN, b.TK_RIGHT, b.TK_LEFT, b.TK_MOUSE_LEFT)
+    if k and blt.check(blt.TK_WCHAR) or k in valid:
+        k = keymap.get(k)
+        if k and blt.state(blt.TK_SHIFT):
+            k = k.upper()
+            if k=='-': k = '_'
+            if k=='/': k = '?'
+            if k=='=': k = '+'
+        return k
+
+def get_mouse_pos():
+    return blt.state(blt.TK_MOUSE_X), blt.state(blt.TK_MOUSE_Y)
+
+def board_setup():
+    Boards.b_1 = Board(Loc(0,0), '1')
+    Boards.b_1.board_1()
+    Boards.b_2 = Board(Loc(1,0), '2')
+    Boards.b_2.board_2()
+
+    Boards.b_3 = Board(Loc(0,1), '3')
+    Boards.b_3.board_3()
+    Boards.b_4 = Board(Loc(1,1), '4')
+    Boards.b_4.board_4()
+
+    board_grid[:] = [
+        ['1', '2', None],
+        ['3', '4', None],
+    ]
+    Misc.B = Boards.b_1
+
+
+def manage_castles():
+    l = [Objects.get_by_id(id) for id in castles]
+    p_castles = [c for c in l if c.player==Misc.player]
+    if not p_castles:
+        Misc.hero.talk(Misc.hero, 'You have no castles!')
+        return
+    x, y = 5, 1
+    ascii_letters = string.ascii_letters
+
+    lst = []
+    for n, c in enumerate(p_castles):
+        lst.append(f' {ascii_letters[n]}) {c.name}')
+    w = max(len(l) for l in lst)
+    blt.clear_area(x, y, w+2, len(lst))
+    for n, l in enumerate(lst):
+        puts(x, y+n, l)
+
+    refresh()
+    ch = get_and_parse_key()
+    item_id = None
+    if ch and ch in ascii_letters:
+        try:
+            castle = p_castles[string.ascii_letters.index(ch)]
+        except IndexError:
+            return
+        castle.town_ui()
+
+
+def stats(castle=None, battle=False):
+    pl = Misc.player
+    if not pl: return
+    h = Misc.hero
+    if battle and Misc.current_unit:
+        u = Misc.current_unit
+        move, speed = u.cur_move, u.speed
+    elif h:
+        move, speed = h.cur_move, h.speed
+    res = pl.resources
+    s=''
+    for r in 'gold wood ore mercury sulphur'.split():
+        id = getattr(ID, r)
+        s+= f'[{r.title()}:{res.get(id)}]'
+    st = s + f' | Move {move}/{speed} | {Misc.B._map}'
+    x = len(st)+2
+    puts2(1,0,blt_esc(st))
+    puts2(x,0, h.name)
+    x+= len(h.name) + 2
+    y = 1
+    if castle:
+        x = 1
+        for a in castle.army:
+            puts2(x+1 if a else x,
+                  y,
+                  a or blt_esc('[ ]')
+                 )
+            x+=3
+        y+=1
+
+    x = 1
+    for a in h.army:
+        puts2(x+1 if a else x,
+              y,
+              a or blt_esc('[ ]'))
+        x+=3
+    puts2(x+2, y, f'w{Misc.week}/d{Misc.day}')
+    refresh()
+
+def status(msg):
+    Misc.status.append(msg)
+
+def blt_esc(txt):
+    return txt.replace('[','[[').replace(']',']]')
+
+def prompt():
+    mp = ''
+    status('> ')
+    blt.refresh()
+    while 1:
+        k = get_and_parse_key()
+        if not k: continue
+        if k=='ENTER':
+            return mp
+        mp += k
+        status('> '+mp)
+        blt.refresh()
 class Loc:
     def __init__(self, x, y):
         self.y, self.x = y, x
@@ -660,10 +831,6 @@ class Board:
                 return True
         return False
 
-def debug(*args):
-    debug_log.write(str(args) + '\n')
-    debug_log.flush()
-print=debug
 
 class Boards:
     @staticmethod
@@ -1238,12 +1405,6 @@ class BattleUI:
                         blt_put_obj(u)
                         break
 
-def blt_put_obj(obj, loc=None):
-    x,y=loc or obj.loc
-    x = x*2 +(0 if y%2==0 else 1)
-    blt.clear_area(x,y,1,1)
-    puts(x, y, obj)
-    refresh()
 
 class LoadBoard:
     def __init__(self, new, b_new):
@@ -1575,14 +1736,6 @@ class Gate(Being):
     health = 15
     char = Blocks.door
 
-
-def pad_none(lst, size):
-    return lst + [None]*(size-len(lst))
-
-def dist(a,b):
-    a = getattr(a,'loc',a)
-    b = getattr(b,'loc',b)
-    return math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2 + (a.x-b.x)*(a.y-b.y))
 
 class Spell:
     id = None
@@ -1932,10 +2085,6 @@ class Building(BeingItemCastleBase):
     def _str(self):
         return str(self), getitem(Blocks.sub, self.available, '+')
 
-def getitem(it, ind=0, default=None):
-    try: return it[ind]
-    except IndexError: return default
-
 class Sawmill(Building):
     resource = ID.wood
     available = 4
@@ -2023,68 +2172,6 @@ class Saves:
         sh['saves'] = {name: s}
         sh.close()
         return B.get_all(player.loc), name
-
-
-def puts(x, y, text):
-    _puts(x, y, text)
-
-def puts2(x, y, text):
-    _puts(x, y+HEIGHT, text)
-
-def _puts(x,y,a):
-    if isinstance(a,str):
-        blt.puts(x,y,a)
-    elif a._str:
-        # combined glyps
-        for _s in a._str():
-            if a.color:
-                _s = f'[color={a.color}]{_s}[/color]'
-            blt.puts(x,y,_s)
-    else:
-        if a.color:
-            a = f'[color={a.color}]{a}[/color]'
-        blt.puts(x,y,str(a))
-
-def refresh():
-    blt.refresh()
-
-def get_and_parse_key():
-    while 1:
-        k = parsekey(blt.read())
-        if k!='SHIFT':
-            return k
-
-def parsekey(k):
-    b=blt
-    valid = (b.TK_RETURN, b.TK_SHIFT, b.TK_ESCAPE, b.TK_UP, b.TK_DOWN, b.TK_RIGHT, b.TK_LEFT, b.TK_MOUSE_LEFT)
-    if k and blt.check(blt.TK_WCHAR) or k in valid:
-        k = keymap.get(k)
-        if k and blt.state(blt.TK_SHIFT):
-            k = k.upper()
-            if k=='-': k = '_'
-            if k=='/': k = '?'
-            if k=='=': k = '+'
-        return k
-
-def get_mouse_pos():
-    return blt.state(blt.TK_MOUSE_X), blt.state(blt.TK_MOUSE_Y)
-
-def board_setup():
-    Boards.b_1 = Board(Loc(0,0), '1')
-    Boards.b_1.board_1()
-    Boards.b_2 = Board(Loc(1,0), '2')
-    Boards.b_2.board_2()
-
-    Boards.b_3 = Board(Loc(0,1), '3')
-    Boards.b_3.board_3()
-    Boards.b_4 = Board(Loc(1,1), '4')
-    Boards.b_4.board_4()
-
-    board_grid[:] = [
-        ['1', '2', None],
-        ['3', '4', None],
-    ]
-    Misc.B = Boards.b_1
 
 
 def main(load_game):
@@ -2224,8 +2311,6 @@ def handle_ui(unit, hero=None, only_allow=None):
                     print(e)
                 break
 
-    # -----------------------------------------------------------------------------------------------
-
     elif k == 'u':
         unit.use()
 
@@ -2244,92 +2329,6 @@ def handle_ui(unit, hero=None, only_allow=None):
 
     B.draw(battle = (not unit.is_hero))
     return 1
-
-def manage_castles():
-    l = [Objects.get_by_id(id) for id in castles]
-    p_castles = [c for c in l if c.player==Misc.player]
-    if not p_castles:
-        Misc.hero.talk(Misc.hero, 'You have no castles!')
-        return
-    x, y = 5, 1
-    ascii_letters = string.ascii_letters
-
-    lst = []
-    for n, c in enumerate(p_castles):
-        lst.append(f' {ascii_letters[n]}) {c.name}')
-    w = max(len(l) for l in lst)
-    blt.clear_area(x, y, w+2, len(lst))
-    for n, l in enumerate(lst):
-        puts(x, y+n, l)
-
-    refresh()
-    ch = get_and_parse_key()
-    item_id = None
-    if ch and ch in ascii_letters:
-        try:
-            castle = p_castles[string.ascii_letters.index(ch)]
-        except IndexError:
-            return
-        castle.town_ui()
-
-
-def stats(castle=None, battle=False):
-    pl = Misc.player
-    if not pl: return
-    h = Misc.hero
-    if battle and Misc.current_unit:
-        u = Misc.current_unit
-        move, speed = u.cur_move, u.speed
-    elif h:
-        move, speed = h.cur_move, h.speed
-    res = pl.resources
-    s=''
-    for r in 'gold wood ore mercury sulphur'.split():
-        id = getattr(ID, r)
-        s+= f'[{r.title()}:{res.get(id)}]'
-    st = s + f' | Move {move}/{speed} | {Misc.B._map}'
-    x = len(st)+2
-    puts2(1,0,blt_esc(st))
-    puts2(x,0, h.name)
-    x+= len(h.name) + 2
-    y = 1
-    if castle:
-        x = 1
-        for a in castle.army:
-            puts2(x+1 if a else x,
-                  y,
-                  a or blt_esc('[ ]')
-                 )
-            x+=3
-        y+=1
-
-    x = 1
-    for a in h.army:
-        puts2(x+1 if a else x,
-              y,
-              a or blt_esc('[ ]'))
-        x+=3
-    puts2(x+2, y, f'w{Misc.week}/d{Misc.day}')
-    refresh()
-
-def status(msg):
-    Misc.status.append(msg)
-
-def blt_esc(txt):
-    return txt.replace('[','[[').replace(']',']]')
-
-def prompt():
-    mp = ''
-    status('> ')
-    blt.refresh()
-    while 1:
-        k = get_and_parse_key()
-        if not k: continue
-        if k=='ENTER':
-            return mp
-        mp += k
-        status('> '+mp)
-        blt.refresh()
 
 
 def editor(_map):
