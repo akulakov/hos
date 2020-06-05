@@ -18,8 +18,9 @@ HoS
 
 HEIGHT = 16
 WIDTH = 38
-LOAD_BOARD = 999
+AUTO_BATTLE = 11
 END_MOVE=900
+
 SLP = 0.01
 SEQ_TYPES = (list, tuple)
 debug_log = open('debug', 'w')
@@ -517,8 +518,8 @@ class Board:
                     elif char==Blocks.water:
                         Item(Blocks.water, 'water', loc, type=Type.water, board_map=self._map)
 
-                    elif char in (BL.book1, BL.book2):
-                        Item(char, 'books', loc, self._map)
+                    # elif char in (BL.book1, BL.book2):
+                    #     Item(char, 'books', loc, self._map)
 
                     elif char in (Blocks.tree1, Blocks.tree2):
                         col = '#ff33%s%s' % (
@@ -537,8 +538,8 @@ class Board:
                     elif char==Blocks.rock2:
                         Item(char, '', loc, self._map)
 
-                    elif char==Blocks.soldier:
-                        Being(loc, name='Soldier', char=BL.soldier, board_map=self._map)
+                    # elif char==Blocks.soldier:
+                    #     Being(loc, name='Soldier', char=BL.soldier, board_map=self._map)
 
                     elif char in '0123456789':
                         specials[int(char)] = loc
@@ -823,14 +824,13 @@ class Castle(Item):
         return sum(u.n*u.health for u in self.live_army())
     def army_is_dead(self):
         return all(not u or u.dead for u in self.army)
+    def live_army(self):
+        return list(u for u in filter(None, self.army) if u.alive)
     # / duplicated from Hero
 
     @property
     def board(self):
         return castle_boards[self.name]
-
-    def live_army(self):
-        return list(u for u in filter(None, self.army) if u.alive)
 
     def town_ui(self, hero=None):
         self.current_hero = hero
@@ -976,10 +976,7 @@ class Castle(Item):
     def recruit_ui(self):
         recruited = defaultdict(int)
         curs = 0
-        # empty_slots = [n for n, s in enumerate(self.current_hero.army) if not s]
         self.board.draw(castle=self)
-        # refresh()
-        # stats(self)
         B = self.board
         while 1:
             lst = [('', 'Unit', 'Available', 'Recruited')]
@@ -1018,7 +1015,6 @@ class Castle(Item):
                                 slot.n+=n
                                 break
                 break
-            # elif k == 'ENTER': select = curs
             elif k == 'LEFT' and bld and recruited[bld.units.type]:
                 bld.available+=1
                 recruited[bld.units.type]-=1
@@ -1076,9 +1072,6 @@ class BuildUI:
             castle.board.put(bld)
             castle.board.buildings.append(bld)
 
-
-AUTO_BATTLE = 11
-SAME_PLAYER = 12
 
 class BattleUI:
     def __init__(self, B):
@@ -1166,10 +1159,7 @@ class BattleUI:
         if a.is_ai():
             a.ai_cast_spell(B, b.live_army())
         else:
-            # y = a.talk(a, 'Do you want to cast a spell?', yesno=1)
-            # if y:
             a.cast_spell(B)
-            # handle_ui(a, only_allow=[' ','s'])
 
     def check_for_win(self, a, b):
         for hero, other in [(a,b),(b,a)]:
@@ -1225,7 +1215,7 @@ class BattleUI:
                     else:
                         return
 
-                    u.attack(tgt)
+                    # u.attack(tgt)
                     B.draw(battle=1)
                     if u.cur_move==0:
                         u.cur_move = u.speed
@@ -1382,6 +1372,7 @@ class Being(BeingItemTownMixin):
             new = rv[1]
         else:
             new = loc
+
         if new:
             being = B.get_being(new)
             if being and being.alive:
@@ -1419,7 +1410,6 @@ class Being(BeingItemTownMixin):
 
         if new:
             B.remove(self)
-            # if new[0] == LOAD_BOARD or new[0] is None:
             if new[0] is None:
                 return new
             self.handle_directional_turn(dir, new)
@@ -1443,7 +1433,8 @@ class Being(BeingItemTownMixin):
                 to_r = False
                 if loc:
                     to_r = loc.x>self.loc.x or (loc.x==self.loc.x and loc.y%2==1)
-                if dir and dir in 'hyb' or not to_r:
+                to_l = not to_r
+                if dir and dir in 'hyb' or to_l:
                     self.char = getattr(Blocks, name+'_l')
                 else:
                     self.char = getattr(Blocks, name+'_r')
@@ -1451,7 +1442,6 @@ class Being(BeingItemTownMixin):
     def handle_player_move(self, new):
         B=self.B
         pick_up = [ID.gold]
-        # top_obj = B.get_(new)
         items = B.get_all_obj(new)
         top_obj = last(items)
         if top_obj:
@@ -1461,7 +1451,6 @@ class Being(BeingItemTownMixin):
 
         for x in reversed(items):
             if x.id in pick_up:
-                # self.inv[x.id] += 1
                 if self.player:
                     self.player.resources[x.id] += x.n
                 B.remove(x, new)
@@ -1473,29 +1462,32 @@ class Being(BeingItemTownMixin):
             a = ':' if plural else ' a'
             status(f'You see{a} {names}')
 
-    def attack(self, obj):
-        if abs(self.loc.x - obj.loc.x) <= 1 and \
-           abs(self.loc.y - obj.loc.y) <= 1:
-                if self.is_hero:
-                    BattleUI(self.B).go(self, obj)
-                    Misc.B = self.B
-                    self.cur_move = 0
-                else:
-                    self.hit(obj)
-        else:
-            d = self.get_dir(obj.loc)
+    def dist_to(self, obj):
+        pass
 
-            rv = self.move(d, attack=False)
-            # really dumb temporary kludge, really shouldn't have even done this..
-            if rv is None:
-                if d == 'h':
-                    self.move(choice('yb'))
-                    self.cur_move -= 1
-                elif d=='l':
-                    self.move(choice('un'))
-                    self.cur_move -= 1
-                else:
-                    self.move(choice('hjklyubn'))
+    def attack(self, obj):
+        if obj.loc in self.B.neighbours(self.loc):
+            if self.is_hero:
+                BattleUI(self.B).go(self, obj)
+                Misc.B = self.B
+                self.cur_move = 0
+            else:
+                self.hit(obj)
+
+        # else:
+        #     d = self.get_dir(obj.loc)
+
+        #     rv = self.move(d, attack=False)
+        #     # really dumb temporary kludge, really shouldn't have even done this..
+        #     if rv is None:
+        #         if d == 'h':
+        #             self.move(choice('yb'))
+        #             self.cur_move -= 1
+        #         elif d=='l':
+        #             self.move(choice('un'))
+        #             self.cur_move -= 1
+        #         else:
+        #             self.move(choice('hjklyubn'))
 
     def get_dir(self, b):
         a = self.loc
@@ -1521,12 +1513,14 @@ class Being(BeingItemTownMixin):
         b = obj.health + obj.max_health*(obj.n-1)
         a = obj.defend(a, type)
         c = b - a
+
         if descr:
             descr = f' with {descr}'
         if a:
             status(f'{self} hits {obj}{descr} for {a} HP')
         else:
             status(f'{self} fails to hit {obj}{descr}')
+
         if c <= 0:
             status(f'{obj} dies')
             obj.n = obj.health = 0
@@ -1534,6 +1528,7 @@ class Being(BeingItemTownMixin):
             n, health = divmod(c, obj.max_health)
             obj.health = health
             obj.n = n+1
+
         self.cur_move = 0
 
     def defend(self, dmg, type):
@@ -1543,20 +1538,8 @@ class Being(BeingItemTownMixin):
         return dmg - x
 
     def action(self):
-        B=self.B
-        # cont = last( [x for x in B.get_all_obj(self.loc) if x.type==Type.container] )
-
-        r,l = self.loc.mod_r(), self.loc.mod_l()
-        rd, ld = r.mod_d(), l.mod_d()
-        locs = [self.loc]
-
-        if chk_oob(r): locs.append(r)
-        if chk_oob(l): locs.append(l)
-        if chk_oob(rd): locs.append(rd)
-        if chk_oob(ld): locs.append(ld)
-
         def is_near(id):
-            return getattr(ID, id) in B.get_ids(locs)
+            return getattr(ID, id) in self.B.get_ids(self.neighbours() + [self.loc])
 
     def use(self):
         """For spells maybe?"""
@@ -1576,7 +1559,7 @@ class Being(BeingItemTownMixin):
         status('Nothing happens')
 
     def closest(self, objs):
-        return first(sorted(objs, key=lambda x: dist(self.loc, x.loc)))
+        return first( sorted(objs, key=lambda x: dist(self.loc, x.loc)) )
 
     @property
     def alive(self):
@@ -1644,6 +1627,10 @@ class Spell:
             if being:
                 self.apply(hero, being)
 
+    def apply(self, hero, being):
+        pass
+
+
 class ShieldSpell(Spell):
     cost = 4
     id = ID.shield_spell
@@ -1667,7 +1654,6 @@ class PowerBolt(Spell):
         loc = being.loc
         dmg = self.dmg * hero.magic_power
         hero.hit(being, dmg=dmg, type=Type.magic_attack, descr=self.name)
-        # status(f'{being} was hit with Power Bolt for {dmg} HP')
         blt_put_obj(Blocks.bolt1, loc)
         sleep(0.25)
         blt_put_obj(Blocks.bolt2, loc)
@@ -1729,9 +1715,7 @@ class Hero(Being):
         self.B.found_type_at(Type.castle, self.loc)
 
     def is_ai(self):
-        if self.player and not self.player.is_ai:
-            return False
-        return True
+        return not self.player or self.player.is_ai
 
     def ai_cast_spell(self, B, targets):
         lst = []
@@ -1778,17 +1762,17 @@ class Hero(Being):
 
 
     def add_xp(self, xp):
-        old = self.xp
         self.xp+=xp
         for lev, xp in self.level_tiers:
-            if old < xp <= self.xp:
-                self.level = lev
+            if xp > self.xp:
+                break
+            self.level = lev
 
     def reset_mana(self):
         self.mana = 20 + self.level*5
 
     def ai_move(self):
-        """This method is only for ai move by actual heroes on main map, NOT by IndependentArmy or units."""
+        """This method is only for ai move by Heroes on the main map, NOT by IndependentArmy or units."""
         B = self.B
         castles = [c for c in self.player.castles if c.board_map==self.board_map and not B.get_being(c.loc)]
         for player in [p for p in players if p!=self.player]:
@@ -1850,7 +1834,7 @@ class ArmyUnit(Being):
 
     @property
     def total_health(self):
-        return self.n*self.health
+        return self.n * self.health
 
 class Peasant(ArmyUnit):
     strength = 1
@@ -2088,8 +2072,8 @@ def get_and_parse_key():
 
 def parsekey(k):
     b=blt
-    if k and blt.check(blt.TK_WCHAR) or k in (blt.TK_RETURN, blt.TK_SHIFT, blt.TK_ESCAPE, blt.TK_UP,
-                                              blt.TK_DOWN, b.TK_RIGHT, b.TK_LEFT, b.TK_MOUSE_LEFT):
+    valid = (b.TK_RETURN, b.TK_SHIFT, b.TK_ESCAPE, b.TK_UP, b.TK_DOWN, b.TK_RIGHT, b.TK_LEFT, b.TK_MOUSE_LEFT)
+    if k and blt.check(blt.TK_WCHAR) or k in valid:
         k = keymap.get(k)
         if k and blt.state(blt.TK_SHIFT):
             k = k.upper()
@@ -2330,10 +2314,8 @@ def stats(castle=None, battle=False):
     puts2(1,0,blt_esc(st))
     puts2(x,0, h.name)
     x+= len(h.name) + 2
-    # for x2 in range(n-1): puts2(x+x2*4,0,'|')
     y = 1
     if castle:
-        # blt.clear_area(0,y,WIDTH,1)
         x = 1
         for a in castle.army:
             puts2(x+1 if a else x,
@@ -2377,10 +2359,6 @@ def editor(_map):
     blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Editor'; font: FreeMono.ttf, size=20")
     blt.color("white")
     blt.composition(True)
-
-    # blt.set("U+E200: Tiles.png, size=24x24, align=top-left")
-    # blt.set("U+E300: fontawesome-webfont.ttf, size=16x16, spacing=3x2, codepage=fontawesome-codepage.txt")
-    # blt.set("U+E300: fontello.ttf, size=16x16, spacing=3x2, codepage=cp.txt")
     blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
 
     blt.clear()
@@ -2402,12 +2380,10 @@ def editor(_map):
     while 1:
         k = get_and_parse_key()
         if k=='Q': break
-        # elif k and k in 'hjklyubnHL':
         elif k and k in 'hlyubnHL':
             n = 1
             if k in 'HL':
                 n = 5
-            # m = dict(h=(0,-1), l=(0,1), j=(1,0), k=(-1,0), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
             my,mx = dict(h=(0,-1), l=(0,1), y=(-1,-1), u=(-1,1), b=(1,-1), n=(1,1), H=(0,-1), L=(0,1))[k]
             if mx==1 and my and loc.y%2==0:
                 mx=0
