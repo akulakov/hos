@@ -20,6 +20,7 @@ HEIGHT = 16
 WIDTH = 38
 AUTO_BATTLE = 11
 END_MOVE=900
+SIZE = 24
 
 SLP = 0.01
 SEQ_TYPES = (list, tuple)
@@ -1961,6 +1962,7 @@ class ArmyUnit(Being):
             rv.append(Blocks.sub_plus)
         elif self.n<10:
             rv.append(getitem(Blocks.sub, self.n))
+            # puts(self.loc.x*4, self.loc.y*4, '[font=subscript]{self.n}[')
         else:
             rv.append(getitem(Blocks.sub, self.n//10))
             rv.append(getitem(Blocks.sub2, self.n%10))
@@ -2168,13 +2170,13 @@ class Saves:
 
 def main(load_game):
     blt.open()
-    blt.set("window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono.ttf, size=24")
+    blt.set(f"window: resizeable=true, size=80x25, cellsize=auto, title='Heroes of Sorcery'; font: FreeMono.ttf, size={SIZE}")
     blt.set("input.filter={keyboard, mouse+}")
     blt.color("white")
     blt.composition(True)
 
-    blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
-    blt.set("U+E400: FreeMono.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
+    # blt.set("U+E300: NotoEmoji-Regular.ttf, size=32x32, spacing=3x2, codepage=notocp.txt, align=top-left")  # GOOGLE
+    # blt.set("U+E400: FreeMono.ttf, size=32x32, spacing=3x2, codepage=monocp.txt, align=top-left")          # GNU
 
     blt.clear()
     if not os.path.exists('saves'):
@@ -2440,6 +2442,7 @@ def editor(_map):
     blt.composition(False)
     blt.close()
 
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     load_game = None
@@ -2448,6 +2451,8 @@ if __name__ == "__main__":
             DBG = True
         if a and a.startswith('-l'):
             load_game = a[2:]
+        if a and a.startswith('-s'):
+            SIZE = int(a[2:])
     if first(argv) == 'ed':
         editor(argv[1])
     else:
